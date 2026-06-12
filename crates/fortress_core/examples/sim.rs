@@ -53,11 +53,27 @@ fn main() {
     println!();
     let outcome = if gs.is_game_over() { "FALLEN" } else { "STANDING" };
     println!(
-        "{outcome} | days: {} | events: {} | alive: {} | dead: {} | morale: {}",
+        "{outcome} | days: {} | events: {} | alive: {} | dead: {} | morale: {} | darkness: {} ({}) | sites: {}",
         gs.fortress.day - 1,
         gs.events_resolved,
         gs.inhabitants.count_alive(),
         gs.inhabitants.count_dead(),
         gs.fortress.morale,
+        gs.region.darkness,
+        gs.region.band().name(),
+        gs.region.sites.len(),
+    );
+    println!(
+        "reputation: {} | heroes: {}",
+        gs.reputation,
+        if gs.adventurers.is_empty() {
+            "none".to_string()
+        } else {
+            gs.adventurers
+                .iter()
+                .map(|a| format!("{} ({})", a.name, a.class.name()))
+                .collect::<Vec<_>>()
+                .join(", ")
+        }
     );
 }

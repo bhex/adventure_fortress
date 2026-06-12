@@ -2,8 +2,10 @@ use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use crate::adventurers::{generate_adventurer, Adventurer, AdventurerClass};
 use crate::engine::train_role;
 use crate::fortress::{Fortress, Upgrade};
+use crate::region::DarknessBand;
 use crate::inhabitants::{generate_inhabitant, InhabitantManager, Role};
 use crate::player::{ability_offers, ClassKind, PlayerAbility, PlayerCharacter};
 use crate::region::Region;
@@ -46,7 +48,16 @@ pub struct GameState {
     pub inhabitants: InhabitantManager,
     pub player: Option<PlayerCharacter>,
     pub region: Region,
+    /// Renown 0-100: victories and prosperity raise it, deaths and desertions
+    /// spend it. Gates adventurer arrivals.
+    pub reputation: i32,
+    pub adventurers: Vec<Adventurer>,
 }
+
+/// Most heroes a fortress can host at once.
+pub const MAX_ADVENTURERS: usize = 4;
+/// Renown below this and no hero bothers with the road.
+pub const ADVENTURER_MIN_REPUTATION: i32 = 20;
 
 impl GameState {
     pub fn new(run_seed: u64) -> GameState {
@@ -62,7 +73,13 @@ impl GameState {
             inhabitants: InhabitantManager::default(),
             player: None,
             region,
+            reputation: 10,
+            adventurers: Vec::new(),
         }
+    }
+
+    pub fn apply_reputation_delta(&mut self, amount: i32) {
+        self.reputation = (self.reputation + amount).clamp(0, 100);
     }
 
     pub fn new_game(run_seed: u64, fortress_name: &str, player: PlayerCharacter) -> GameState {
@@ -102,6 +119,8 @@ impl GameState {
             Upgrade::Inn => self.fortress.max_population += 5,
             _ => {}
         }
+        // Word of a growing fortress travels.
+        self.apply_reputation_delta(2);
         format!("{} has been built!", upgrade.name())
     }
 
@@ -183,6 +202,67 @@ impl GameState {
             }
             if joined == 0 {
                 lines.push("Refugees pass the gates by — the fortress has no room.".to_string());
+            }
+        }
+
+        // Adventurers: heroes seek a guild, a name worth the road — and a fight.
+        // The deeper the darkness, the more of them come looking for it.
+        if self.fortress.has_upgrade(Upgrade::AdventurersGuild)
+            && self.reputation >= ADVENTURER_MIN_REPUTATION
+            && self.adventurers.len() < MAX_ADVENTURERS
+        {
+            let mut chance = self.reputation; // per-mille
+            match self.region.band() {
+                DarknessBand::Deep => chance *= 2,
+                DarknessBand::Overwhelming => chance *= 3,
+                _ => {}
+            }
+            if self.rng.random_range(0..1000) < chance {
+                let hero = generate_adventurer(&mut self.rng);
+                lines.push(format!(
+                    "{} the {} signs the guild ledger. ({})",
+                    hero.name,
+                    hero.class.name(),
+                    hero.class.perk_name()
+                ));
+                self.adventurers.push(hero);
+            }
+        }
+
+        // Heroes keep their edge, and their perks work for the fortress.
+        for hero in &mut self.adventurers {
+            hero.skills.train(hero.class.home_skill(), 2);
+        }
+        let mut ranger_food = 0i64;
+        let mut veil_push = 0;
+        let mut cleric_heal = 0i32;
+        for hero in &self.adventurers {
+            let tier = hero.perk_tier().index();
+            match hero.class {
+                AdventurerClass::Ranger => ranger_food += tier as i64,
+                AdventurerClass::Sorcerer => veil_push += (tier as i32) / 2,
+                AdventurerClass::Cleric => cleric_heal += 3 * tier as i32,
+                AdventurerClass::Knight => {} // passive: softens combat damage
+            }
+        }
+        if ranger_food > 0 {
+            self.resources.apply_delta(&ResourceDelta { food: ranger_food, ..Default::default() });
+            lines.push("The rangers return from the hunt with game.".to_string());
+        }
+        if veil_push > 0 {
+            self.region.darkness = (self.region.darkness - veil_push).max(0);
+        }
+        if cleric_heal > 0 {
+            if let Some(patient) = self
+                .inhabitants
+                .inhabitants
+                .iter_mut()
+                .filter(|i| i.is_alive && i.health < 100)
+                .min_by_key(|i| i.health)
+            {
+                patient.heal(cleric_heal);
+                let name = patient.name.clone();
+                lines.push(format!("The cleric tends {name}. (+{cleric_heal} health)"));
             }
         }
 
@@ -334,13 +414,16 @@ impl GameState {
             }
         }
 
-        // Inhabitant morale cascades into fortress morale
+        // Inhabitant morale cascades into fortress morale — and into renown:
+        // travelers carry word of a thriving hold, or a miserable one.
         let avg = self.inhabitants.average_morale();
         if avg >= 65 {
             self.fortress.apply_morale_delta(2);
+            self.apply_reputation_delta(1);
             lines.push("Spirits are high among the inhabitants. (+2 morale)".to_string());
         } else if avg <= 30 {
             self.fortress.apply_morale_delta(-2);
+            self.apply_reputation_delta(-1);
             lines.push("Grumbling spreads through the halls. (-2 morale)".to_string());
         }
 

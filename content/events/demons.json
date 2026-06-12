@@ -1,0 +1,390 @@
+[
+  {
+    "name": "Imp Scouts",
+    "description": "Small winged shapes flit along the treeline at dusk, counting your walls.",
+    "tags": ["demon", "combat"],
+    "max_darkness": 30,
+    "weight": 1.0,
+    "choices": [
+      {
+        "label": "Chase them off",
+        "description": "Don't let them report back.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -5}},
+          {"kind": "morale", "params": {"amount": 3}}
+        ]
+      },
+      {
+        "label": "Let them look",
+        "description": "Walls speak for themselves. So do open gates.",
+        "effects": [
+          {"kind": "region", "params": {"darkness": 3}},
+          {"kind": "morale", "params": {"amount": -2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Imp Mischief",
+    "description": "Tools go missing, milk sours, knots untie themselves. Imps in the storerooms.",
+    "tags": ["demon", "economy"],
+    "max_darkness": 35,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Smoke them out",
+        "description": "A night of noise and torches.",
+        "cost": {"wood": 4},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 3}}
+        ]
+      },
+      {
+        "label": "Endure the pests",
+        "description": "They'll tire of it. Eventually.",
+        "effects": [
+          {"kind": "resource", "params": {"tools": -3, "food": -4}},
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "A Portal Flickers",
+    "description": "Hunters report a wound in the air above the old barrow, dripping shadow.",
+    "tags": ["demon", "combat"],
+    "min_darkness": 10,
+    "weight": 0.9,
+    "choices": [
+      {
+        "label": "Send guards to collapse it",
+        "description": "Steel and salt and old words.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -10}},
+          {"kind": "region", "params": {"darkness": -5, "pressure": -1}},
+          {"kind": "morale", "params": {"amount": 5}}
+        ]
+      },
+      {
+        "label": "Leave it be",
+        "description": "It's far away. For now.",
+        "effects": [
+          {"kind": "region", "params": {"pressure": 1}},
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Whispers at the Walls",
+    "description": "By night the sentries hear their own names spoken from the dark, softly, in dead voices.",
+    "tags": ["demon", "disaster"],
+    "min_darkness": 15,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Double the watch in pairs",
+        "description": "No one stands the wall alone.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "morale": -4}},
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      },
+      {
+        "label": "Stop the sentries' ears with wax",
+        "description": "Old sailors' wisdom against old evils.",
+        "effects": [
+          {"kind": "defense", "params": {"amount": -2}},
+          {"kind": "morale", "params": {"amount": 1}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Plea from a Falling City",
+    "description": "A mud-spattered rider begs aid for a city besieged by the darkness: grain, timber, anything.",
+    "tags": ["demon", "diplomacy"],
+    "min_darkness": 25,
+    "weight": 1.0,
+    "choices": [
+      {
+        "label": "Send a relief train",
+        "description": "If the cities fall, the night comes for everyone.",
+        "cost": {"food": 10, "wood": 5},
+        "effects": [
+          {"kind": "region", "params": {"site_strength": 5, "darkness": -3}},
+          {"kind": "morale", "params": {"amount": 4}}
+        ]
+      },
+      {
+        "label": "Hoard your stores",
+        "description": "Charity starves the giver.",
+        "effects": [
+          {"kind": "region", "params": {"darkness": 4}},
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Cultists Among Us",
+    "description": "Chalk sigils under a bunk, candle stubs, a missing goat. Someone inside worships the dark.",
+    "tags": ["demon", "inhabitants"],
+    "min_darkness": 25,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Root them out",
+        "description": "Question everyone. Trust no one tonight.",
+        "stat_check": {
+          "stat": "wit",
+          "difficulty": 8,
+          "success_effects": [
+            {"kind": "remove_inhabitant", "params": {}},
+            {"kind": "morale", "params": {"amount": 5}},
+            {"kind": "region", "params": {"darkness": -2}}
+          ],
+          "failure_effects": [
+            {"kind": "morale", "params": {"amount": -6}}
+          ]
+        },
+        "effects": []
+      },
+      {
+        "label": "Watch and wait",
+        "description": "A known rat is safer than a hidden one.",
+        "effects": [
+          {"kind": "region", "params": {"darkness": 2}},
+          {"kind": "morale", "params": {"amount": -2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Refugee Column",
+    "description": "Survivors of a burned town trudge toward your gates, carrying what the darkness left them.",
+    "tags": ["demon", "inhabitants"],
+    "min_darkness": 30,
+    "weight": 0.9,
+    "choices": [
+      {
+        "label": "Take them in",
+        "description": "Hands are worth more than grain now.",
+        "cost": {"food": 8},
+        "effects": [
+          {"kind": "spawn_inhabitant", "params": {}},
+          {"kind": "spawn_inhabitant", "params": {}},
+          {"kind": "morale", "params": {"amount": 4}}
+        ]
+      },
+      {
+        "label": "Bar the gates",
+        "description": "The darkness follows refugees like crows follow a plough.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -6}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Shadow Blight",
+    "description": "Where the night-mist touched the fields, the crops stand blackened and weeping.",
+    "tags": ["demon", "disaster"],
+    "min_darkness": 35,
+    "weight": 1.0,
+    "choices": [
+      {
+        "label": "Burn the tainted rows",
+        "description": "Fire cleans what prayer cannot.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -8}},
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      },
+      {
+        "label": "Harvest what survives",
+        "description": "Hungry people can't be choosy.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -4}},
+          {"kind": "apply_to_role", "params": {"role": "farmer", "health": -10}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Mercenaries in Retreat",
+    "description": "The remnant of a shattered free company asks shelter — hard-eyed, ragged, still armed.",
+    "tags": ["demon", "economy"],
+    "min_darkness": 35,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Hire the survivors",
+        "description": "They have seen what's coming and lived.",
+        "cost": {"valuables": 5},
+        "effects": [
+          {"kind": "spawn_inhabitant", "params": {"role": "guard"}},
+          {"kind": "defense", "params": {"amount": 3}}
+        ]
+      },
+      {
+        "label": "Feed them and send them on",
+        "description": "Kind, and safer.",
+        "cost": {"food": 5},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Demon Host",
+    "description": "They come in ranks now: horned shapes under a banner of smoke, drums like a buried heart.",
+    "tags": ["demon", "combat"],
+    "min_darkness": 40,
+    "weight": 1.2,
+    "choices": [
+      {
+        "label": "Meet them with steel",
+        "description": "The walls have held worse. Probably.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -20}},
+          {"kind": "defense", "params": {"amount": -3}},
+          {"kind": "morale", "params": {"amount": 6}}
+        ]
+      },
+      {
+        "label": "Tribute of treasure",
+        "description": "Demons love gold the way rust loves iron.",
+        "cost": {"valuables": 7},
+        "effects": [
+          {"kind": "region", "params": {"darkness": 3}},
+          {"kind": "morale", "params": {"amount": -4}}
+        ]
+      },
+      {
+        "label": "Hide in the keep",
+        "description": "Let them break on stone and find nothing soft.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -10, "wood": -6}},
+          {"kind": "morale", "params": {"amount": -6}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Hunting Dark",
+    "description": "Something walks the night that the sentries will not name. In the morning, a door stands open.",
+    "tags": ["demon", "disaster"],
+    "min_darkness": 50,
+    "weight": 1.0,
+    "choices": [
+      {
+        "label": "Hunt it with torches",
+        "description": "Whatever it is, it dies like everything else. Hopefully.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -15}},
+          {"kind": "region", "params": {"darkness": -4}},
+          {"kind": "morale", "params": {"amount": 6}}
+        ]
+      },
+      {
+        "label": "Bar every door at dusk",
+        "description": "Let it hunt elsewhere.",
+        "effects": [
+          {"kind": "kill_inhabitant", "params": {}},
+          {"kind": "morale", "params": {"amount": -5}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Last Stand of the Lantern Bearers",
+    "description": "An adventurer band makes their stand on a nearby hill, lanterns guttering against a sea of shadow.",
+    "tags": ["demon", "diplomacy"],
+    "min_darkness": 50,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Sally to their aid",
+        "description": "No one fights the dark alone. Not while you stand.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -15}},
+          {"kind": "region", "params": {"site_strength": 6, "darkness": -5}},
+          {"kind": "morale", "params": {"amount": 8}}
+        ]
+      },
+      {
+        "label": "Watch the lights go out",
+        "description": "Your duty is to your own.",
+        "effects": [
+          {"kind": "region", "params": {"darkness": 5}},
+          {"kind": "morale", "params": {"amount": -8}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Sky Bleeds",
+    "description": "At noon the sun dims to a red coal. Cattle low; children cry; the old make signs against evil.",
+    "tags": ["demon", "disaster"],
+    "min_darkness": 60,
+    "weight": 0.9,
+    "choices": [
+      {
+        "label": "Light every torch and bell",
+        "description": "Drown the dark in fire and noise.",
+        "cost": {"wood": 8},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 4}}
+        ]
+      },
+      {
+        "label": "Wait it out in silence",
+        "description": "It passes. Everything passes.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -8}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Maelgor, Terror of the Veil",
+    "description": "A named thing comes to your gates: tall as the watchtower, crowned in cold fire. It knows your name.",
+    "tags": ["demon", "combat"],
+    "min_darkness": 75,
+    "weight": 1.5,
+    "choices": [
+      {
+        "label": "Face it at the gate",
+        "description": "Legends are made of moments like this. So are graves.",
+        "stat_check": {
+          "stat": "might",
+          "difficulty": 10,
+          "success_effects": [
+            {"kind": "region", "params": {"darkness": -15, "pressure": -2}},
+            {"kind": "morale", "params": {"amount": 15}},
+            {"kind": "resource", "params": {"valuables": 6}}
+          ],
+          "failure_effects": [
+            {"kind": "kill_inhabitant", "params": {}},
+            {"kind": "defense", "params": {"amount": -6}},
+            {"kind": "morale", "params": {"amount": -10}}
+          ]
+        },
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -25}}
+        ]
+      },
+      {
+        "label": "Seal the gates and endure",
+        "description": "It cannot be fought. It can perhaps be outlasted.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -12, "wood": -8}},
+          {"kind": "region", "params": {"darkness": 4}},
+          {"kind": "morale", "params": {"amount": -8}}
+        ]
+      }
+    ]
+  }
+]

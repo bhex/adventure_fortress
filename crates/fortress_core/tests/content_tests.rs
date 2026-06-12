@@ -12,7 +12,7 @@ fn deck() -> Vec<Event> {
 #[test]
 fn all_content_parses_with_enough_events() {
     let events = deck();
-    assert!(events.len() >= 35, "expected >=35 events, got {}", events.len());
+    assert!(events.len() >= 49, "expected >=49 events, got {}", events.len());
     for e in &events {
         assert!(!e.choices.is_empty(), "{} has no choices", e.name);
     }

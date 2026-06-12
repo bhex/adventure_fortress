@@ -614,3 +614,221 @@ fn inn_adds_beds_and_daily_morale() {
     // +1 inn, +1 warm sleep (0 inhabitants in test_state, so no upkeep penalty)
     assert!(gs.fortress.morale >= morale_before + 1);
 }
+
+// ----------------------------------------------------------------------
+// region: the darkness war beyond the walls
+// ----------------------------------------------------------------------
+
+#[test]
+fn region_seeding_is_deterministic() {
+    let a = GameState::new(7);
+    let b = GameState::new(7);
+    assert_eq!(a.region, b.region);
+    assert!(a.region.sites.len() >= 5, "expected a populated region");
+    let c = GameState::new(8);
+    assert_ne!(a.region, c.region, "different seeds should differ");
+}
+
+#[test]
+fn darkness_stays_in_bounds_and_fluctuates() {
+    let mut gs = test_state();
+    let mut values = Vec::new();
+    for _ in 0..60 {
+        gs.region.tick(&mut gs.rng);
+        assert!((0..=100).contains(&gs.region.darkness));
+        values.push(gs.region.darkness);
+    }
+    // not monotonic: at least one day the darkness dipped
+    assert!(values.windows(2).any(|w| w[1] < w[0]), "darkness never receded: {values:?}");
+}
+
+#[test]
+fn overrun_site_spikes_darkness_and_sends_refugees() {
+    let mut gs = test_state();
+    gs.region.darkness = 80;
+    gs.region.sites = vec![Site { name: "Vell".to_string(), kind: SiteKind::City, strength: 1 }];
+    let mut fell = false;
+    for _ in 0..20 {
+        let before = gs.region.darkness;
+        let lines = gs.region.tick(&mut gs.rng);
+        if gs.region.sites.is_empty() {
+            fell = true;
+            assert!(gs.region.refugee_wave_days >= 1, "a fallen site owes a refugee wave");
+            assert!(
+                gs.region.darkness >= before.min(90),
+                "darkness should spike when a site falls"
+            );
+            assert!(lines.iter().any(|l| l.contains("Vell")), "the fall should be told");
+            break;
+        }
+    }
+    assert!(fell, "a strength-1 site at darkness 80 must fall within 20 days");
+}
+
+#[test]
+fn refugee_wave_brings_arrivals() {
+    let mut gs = test_state();
+    gs.resources.apply_delta(&ResourceDelta { food: 99, ..Default::default() });
+    gs.region.refugee_wave_days = 1;
+    gs.region.darkness = 0;
+    gs.region.portal_pressure = 0; // keep the tick quiet for the assertion
+    let before = gs.inhabitants.count_alive();
+    gs.apply_daily_effects();
+    let after = gs.inhabitants.count_alive();
+    assert!(after >= before + 2, "a wave should bring at least 2 refugees");
+    assert_eq!(gs.region.refugee_wave_days, 0);
+}
+
+#[test]
+fn demon_events_gate_on_darkness() {
+    let mut e = make_event(vec![simple_choice(vec![])], vec!["demon"]);
+    e.min_darkness = Some(50);
+    let mut gs = test_state();
+    gs.region.darkness = 10;
+    assert!(eligible_events(&[e.clone()], 1, &gs, None).is_empty());
+    gs.region.darkness = 60;
+    assert_eq!(eligible_events(&[e.clone()], 1, &gs, None).len(), 1);
+    // and the inverse gate
+    let mut low = make_event(vec![simple_choice(vec![])], vec!["demon"]);
+    low.max_darkness = Some(30);
+    assert!(eligible_events(&[low], 1, &gs, None).is_empty());
+}
+
+#[test]
+fn demon_damage_scales_with_darkness() {
+    let mut gs = test_state();
+    gs.region.darkness = 80; // overwhelming
+    gs.inhabitants.add(guard("G"));
+    resolve_single(
+        &mut gs,
+        Effect::ApplyToRole { role: Role::Guard, health: -20, morale: 0 },
+        vec!["demon"],
+    );
+    // -20 + (-20/2) = -30
+    assert_eq!(gs.inhabitants.get_by_role(Role::Guard)[0].health, 70);
+}
+
+#[test]
+fn region_effect_moves_the_war() {
+    let mut gs = test_state();
+    gs.region.darkness = 50;
+    let strength_before = gs.region.total_strength();
+    resolve_single(
+        &mut gs,
+        Effect::Region { darkness: -5, site_strength: 4, pressure: -1 },
+        vec!["demon"],
+    );
+    assert_eq!(gs.region.darkness, 45);
+    assert_eq!(gs.region.total_strength(), strength_before + 4);
+    assert_eq!(gs.region.portal_pressure, 1);
+}
+
+// ----------------------------------------------------------------------
+// reputation & adventurers
+// ----------------------------------------------------------------------
+
+#[test]
+fn reputation_moves_with_fortune() {
+    let mut gs = test_state();
+    let base = gs.reputation;
+    // buildings raise renown
+    gs.build_upgrade(Upgrade::Granary);
+    assert_eq!(gs.reputation, base + 2);
+    // deaths spend it
+    gs.inhabitants.add(guard("Doomed"));
+    resolve_single(&mut gs, Effect::KillInhabitant { role: None }, vec![]);
+    assert_eq!(gs.reputation, base);
+    // surviving combat earns it back
+    resolve_single(&mut gs, Effect::Morale { amount: 0 }, vec!["combat"]);
+    assert_eq!(gs.reputation, base + 1);
+    // clamped to 0-100
+    gs.apply_reputation_delta(1000);
+    assert_eq!(gs.reputation, 100);
+}
+
+#[test]
+fn adventurers_need_guild_and_renown() {
+    let mut gs = test_state();
+    gs.resources.apply_delta(&ResourceDelta { food: 500, ..Default::default() });
+    gs.reputation = 100;
+    gs.region.darkness = 80; // heroes go where the fight is
+    gs.region.portal_pressure = 0;
+    gs.region.sites.clear();
+    // without a guild, nobody comes
+    for _ in 0..60 {
+        gs.apply_daily_effects();
+        gs.region.darkness = 80;
+    }
+    assert!(gs.adventurers.is_empty(), "no guild, no heroes");
+    // with the guild at legendary renown and deep darkness, they come fast
+    gs.build_upgrade(Upgrade::AdventurersGuild);
+    gs.reputation = 100;
+    for _ in 0..60 {
+        gs.apply_daily_effects();
+        gs.region.darkness = 80;
+        gs.resources.food = 500;
+        gs.fortress.morale = 50;
+    }
+    assert!(!gs.adventurers.is_empty(), "guild + renown + darkness should draw heroes");
+    assert!(gs.adventurers.len() <= MAX_ADVENTURERS);
+}
+
+#[test]
+fn low_renown_draws_no_heroes() {
+    let mut gs = test_state();
+    gs.build_upgrade(Upgrade::AdventurersGuild);
+    gs.reputation = ADVENTURER_MIN_REPUTATION - 1;
+    for _ in 0..60 {
+        gs.apply_daily_effects();
+        gs.reputation = ADVENTURER_MIN_REPUTATION - 1;
+    }
+    assert!(gs.adventurers.is_empty());
+}
+
+#[test]
+fn knight_perk_scales_with_combat_tier() {
+    let mut gs = test_state();
+    gs.inhabitants.add(guard("G"));
+    let mut knight = Adventurer {
+        name: "Ser Test".to_string(),
+        class: AdventurerClass::Knight,
+        skills: SkillSet::default(),
+    };
+    // a dabbling knight doesn't help yet
+    gs.adventurers.push(knight.clone());
+    resolve_single(
+        &mut gs,
+        Effect::ApplyToRole { role: Role::Guard, health: -20, morale: 0 },
+        vec!["combat"],
+    );
+    assert_eq!(gs.inhabitants.get_by_role(Role::Guard)[0].health, 80);
+    // a skilled knight shields the defenders
+    knight.skills.train(Skill::Combat, 90);
+    gs.adventurers[0] = knight;
+    resolve_single(
+        &mut gs,
+        Effect::ApplyToRole { role: Role::Guard, health: -20, morale: 0 },
+        vec!["combat"],
+    );
+    // -20 softened 25%: -15
+    assert_eq!(gs.inhabitants.get_by_role(Role::Guard)[0].health, 80 - 15);
+}
+
+#[test]
+fn hero_perks_work_daily_and_train_by_use() {
+    let mut gs = test_state();
+    let mut ranger = Adventurer {
+        name: "Kestrel".to_string(),
+        class: AdventurerClass::Ranger,
+        skills: SkillSet::default(),
+    };
+    ranger.skills.train(Skill::Combat, 90); // Skilled: index 3
+    gs.adventurers.push(ranger);
+    let food_before = gs.resources.food;
+    gs.apply_daily_effects();
+    assert!(gs.resources.food > food_before - 2, "ranger hunting should offset upkeep");
+    // event training: combat events sharpen the hero
+    let xp_before = gs.adventurers[0].skills.xp(Skill::Combat);
+    resolve_single(&mut gs, Effect::Morale { amount: 0 }, vec!["combat"]);
+    assert_eq!(gs.adventurers[0].skills.xp(Skill::Combat), xp_before + 8);
+}

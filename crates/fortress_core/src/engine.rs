@@ -172,6 +172,25 @@ pub fn resolve(event: &Event, choice_index: usize, gs: &mut GameState) -> EventR
             }
         }
     }
+    // Resident heroes fight and learn alongside everyone else.
+    if event.has_tag("combat") || event.has_tag("disaster") {
+        for hero in &mut gs.adventurers {
+            let skill = hero.class.home_skill();
+            if let Some(tier) = hero.skills.train(skill, 8) {
+                result.lines.push(format!(
+                    "{} is now a {} {}.",
+                    hero.name,
+                    tier.name(),
+                    skill.practitioner()
+                ));
+            }
+        }
+    }
+
+    // A fortress that stands through battle is talked about.
+    if event.has_tag("combat") {
+        gs.apply_reputation_delta(1);
+    }
 
     // Battle spends steel: arms break, arrows fly, edges dull.
     if event.has_tag("combat") && gs.resources.gear > 0 {
@@ -283,6 +302,7 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
                     result.lines.push(format!("{name} the {role_name} has died."));
                 }
                 gs.fortress.apply_morale_delta(-3);
+                gs.apply_reputation_delta(-2);
             }
         }
 
@@ -300,6 +320,7 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
                     .unwrap_or("inhabitant");
                 result.lines.push(format!("{name} the {role_name} slips away in the night."));
                 gs.inhabitants.remove(&name);
+                gs.apply_reputation_delta(-2);
             } else {
                 result.lines.push("The inhabitants stand together — no one deserts.".to_string());
             }
@@ -324,6 +345,7 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
             for name in deaths {
                 result.lines.push(format!("{} the {} succumbs.", name, role.name()));
                 gs.fortress.apply_morale_delta(-3);
+                gs.apply_reputation_delta(-2);
             }
         }
 
@@ -388,6 +410,13 @@ fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32 {
             .iter()
             .any(|i| i.skills.tier(Skill::Combat) >= SkillTier::Skilled)
         {
+            h = -((-h * 3) / 4);
+        }
+        // Shield of the Walls: a seasoned knight holds the line.
+        if gs.adventurers.iter().any(|a| {
+            a.class == crate::adventurers::AdventurerClass::Knight
+                && a.perk_tier() >= SkillTier::Skilled
+        }) {
             h = -((-h * 3) / 4);
         }
         // A well-stocked armory: good gear turns blades.

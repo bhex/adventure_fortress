@@ -227,7 +227,7 @@ fn update_hud_text(game: Res<Game>, mut query: Query<&mut Text, With<HudText>>) 
     .map(|k| format!("{} {}", k.name(), gs.resources.band(*k).name()))
     .collect();
     **t = format!(
-        "Day {} — {}  |  Morale {}  Def {}  |  Pop {}/{}  |  {}",
+        "Day {} — {}  |  Morale {}  Def {}  |  Pop {}/{}  |  {}  |  Darkness: {}",
         gs.fortress.day,
         gs.fortress.name,
         gs.fortress.morale,
@@ -235,6 +235,7 @@ fn update_hud_text(game: Res<Game>, mut query: Query<&mut Text, With<HudText>>) 
         gs.inhabitants.count_alive(),
         gs.fortress.max_population,
         stores.join(" · "),
+        gs.region.band().name(),
     );
 }
 
@@ -288,11 +289,37 @@ fn update_inspect(
             .iter()
             .map(|k| format!("{}: {}", k.name(), gs.resources.band(*k).name()))
             .collect();
+            let renown = match gs.reputation {
+                0..=19 => "unknown",
+                20..=39 => "local",
+                40..=59 => "known",
+                60..=79 => "famed",
+                _ => "legendary",
+            };
+            let heroes = if gs.adventurers.is_empty() {
+                "none yet".to_string()
+            } else {
+                gs.adventurers
+                    .iter()
+                    .map(|a| {
+                        format!(
+                            "{} the {} ({} {})",
+                            a.name,
+                            a.class.name(),
+                            a.perk_tier().name(),
+                            a.class.home_skill().practitioner()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
             format!(
-                "{}\nAbilities: {}\n\n{}\n\nClick an inhabitant or building\nto inspect it.",
+                "{}\nAbilities: {}\n\n{}\nRenown: {}\n\nHeroes:\n{}\n\nClick an inhabitant or building\nto inspect it.",
                 commander,
                 abilities,
                 stores.join("\n"),
+                renown,
+                heroes,
             )
         }
         Some(Selection::Keep) => format!(
