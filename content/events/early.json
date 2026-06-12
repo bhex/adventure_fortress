@@ -1,0 +1,343 @@
+[
+  {
+    "name": "Raider Scouts",
+    "description": "A small band of raiders probes your walls, testing for weakness.",
+    "tags": ["combat"],
+    "min_day": 1,
+    "max_day": 12,
+    "weight": 1.2,
+    "choices": [
+      {
+        "label": "Drive them off",
+        "description": "Show strength now to deter worse later.",
+        "effects": [
+          {"kind": "defense", "params": {"amount": -2}},
+          {"kind": "morale", "params": {"amount": 5}}
+        ]
+      },
+      {
+        "label": "Stay hidden",
+        "description": "Let them pass; hope they report nothing of value.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -5}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Traveling Merchant",
+    "description": "A merchant's cart rattles up to the gate, laden with goods.",
+    "tags": ["economy"],
+    "min_day": 1,
+    "weight": 1.2,
+    "choices": [
+      {
+        "label": "Trade timber for food",
+        "description": "Stock the larder.",
+        "cost": {"wood": 8},
+        "effects": [
+          {"kind": "resource", "params": {"food": 12}}
+        ]
+      },
+      {
+        "label": "Trade food for timber",
+        "description": "Wood for repairs and construction.",
+        "cost": {"food": 8},
+        "effects": [
+          {"kind": "resource", "params": {"wood": 10}}
+        ]
+      },
+      {
+        "label": "Sell surplus grain",
+        "description": "Turn food into trade goods.",
+        "cost": {"food": 10},
+        "effects": [
+          {"kind": "resource", "params": {"valuables": 3}}
+        ]
+      },
+      {
+        "label": "Wave him on",
+        "description": "Keep your stores.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "A Wanderer Arrives",
+    "description": "A weathered traveler asks for shelter and offers to work.",
+    "tags": ["inhabitants"],
+    "min_day": 1,
+    "weight": 1.3,
+    "choices": [
+      {
+        "label": "Welcome them in",
+        "description": "Every pair of hands helps.",
+        "effects": [
+          {"kind": "spawn_inhabitant", "params": {}},
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      },
+      {
+        "label": "Turn them away",
+        "description": "Strangers bring trouble.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Good Harvest",
+    "description": "The fields have been generous this season.",
+    "tags": ["economy"],
+    "min_day": 2,
+    "requires_role": "farmer",
+    "choices": [
+      {
+        "label": "Store it all",
+        "description": "Fill the stores against leaner days.",
+        "effects": [
+          {"kind": "resource", "params": {"food": 15}}
+        ]
+      },
+      {
+        "label": "Hold a feast",
+        "description": "Share the bounty; lift every heart.",
+        "effects": [
+          {"kind": "resource", "params": {"food": 6}},
+          {"kind": "morale", "params": {"amount": 8}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Wolf Pack",
+    "description": "Wolves circle the outer fields at dusk, eyeing the livestock — and the farmers.",
+    "tags": ["combat"],
+    "min_day": 1,
+    "max_day": 15,
+    "choices": [
+      {
+        "label": "Hunt them down",
+        "description": "End the threat, whatever it costs.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -10}},
+          {"kind": "resource", "params": {"food": 8}},
+          {"kind": "morale", "params": {"amount": 3}}
+        ]
+      },
+      {
+        "label": "Keep everyone inside",
+        "description": "Lose a day's work, save the blood.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -5}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Traveling Healer",
+    "description": "A healer on pilgrimage offers to stay — for provisions.",
+    "tags": ["inhabitants"],
+    "min_day": 2,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Provision her",
+        "description": "A healer is worth her weight in grain.",
+        "cost": {"food": 8},
+        "effects": [
+          {"kind": "spawn_inhabitant", "params": {"role": "healer"}}
+        ]
+      },
+      {
+        "label": "Send her on",
+        "description": "The stores are too thin.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "Hidden Cache",
+    "description": "Repairs to the cellar wall reveal a forgotten strongbox.",
+    "tags": ["economy"],
+    "min_day": 3,
+    "weight": 0.6,
+    "choices": [
+      {
+        "label": "Crack it open",
+        "description": "Whatever's inside is yours now.",
+        "effects": [
+          {"kind": "resource", "params": {"valuables": 6}},
+          {"kind": "morale", "params": {"amount": 3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Rats in the Stores",
+    "description": "Droppings and gnawed sacks — vermin have found the granary.",
+    "tags": ["disaster"],
+    "min_day": 2,
+    "choices": [
+      {
+        "label": "Burn the spoiled sacks",
+        "description": "Lose some now to save the rest.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -6}}
+        ]
+      },
+      {
+        "label": "Ignore it",
+        "description": "Surely it's not that bad.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -12}},
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Stone Vein Discovered",
+    "description": "Diggers strike a rich seam of stone beneath the east slope.",
+    "tags": ["economy"],
+    "min_day": 3,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Quarry it",
+        "description": "Hard labor, good stone.",
+        "effects": [
+          {"kind": "resource", "params": {"stone": 15}},
+          {"kind": "apply_to_role", "params": {"role": "farmer", "morale": -5}}
+        ]
+      },
+      {
+        "label": "Mark it for later",
+        "description": "The fields need hands more than the quarry does.",
+        "effects": [
+          {"kind": "resource", "params": {"stone": 5}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Old Mason Offers Help",
+    "description": "A retired mason squints at your walls. \"I could raise you a watchtower, for materials.\"",
+    "tags": ["upgrade"],
+    "min_day": 3,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Build the Watchtower",
+        "description": "+5 defense, and eyes on the horizon.",
+        "cost": {"wood": 10, "stone": 8},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Watchtower"}}
+        ]
+      },
+      {
+        "label": "Decline",
+        "description": "The materials are needed elsewhere.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "Farmhands Wanted",
+    "description": "The farmers petition for a proper farm — cleared fields, an ox, a barn.",
+    "tags": ["upgrade"],
+    "min_day": 4,
+    "requires_role": "farmer",
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Build the Farm",
+        "description": "+3 food every day, forever.",
+        "cost": {"wood": 15},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Farm"}},
+          {"kind": "apply_to_role", "params": {"role": "farmer", "morale": 10}}
+        ]
+      },
+      {
+        "label": "Not yet",
+        "description": "The treasury can't bear it.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "farmer", "morale": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "First Frost",
+    "description": "An early frost silvers the fields. The cold season is coming.",
+    "tags": ["disaster"],
+    "min_day": 5,
+    "max_day": 14,
+    "choices": [
+      {
+        "label": "Harvest early",
+        "description": "Take what's ripe before the frost takes it.",
+        "effects": [
+          {"kind": "resource", "params": {"food": 5}}
+        ]
+      },
+      {
+        "label": "Risk a few more days",
+        "description": "A fuller harvest — if the weather holds.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -8}},
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Wandering Bard",
+    "description": "A bard sings for supper in the great hall, and the walls feel less grim.",
+    "tags": ["inhabitants"],
+    "min_day": 2,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Feed and house him",
+        "description": "Songs are worth a meal.",
+        "cost": {"food": 3},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 8}}
+        ]
+      },
+      {
+        "label": "No room for idlers",
+        "description": "Music doesn't fill bellies.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Broken Palisade",
+    "description": "A section of the outer palisade has rotted through.",
+    "tags": ["disaster"],
+    "min_day": 2,
+    "choices": [
+      {
+        "label": "Repair it properly",
+        "description": "Good timber, good work.",
+        "cost": {"wood": 8},
+        "effects": [
+          {"kind": "defense", "params": {"amount": 3}}
+        ]
+      },
+      {
+        "label": "Patch it with scrap",
+        "description": "It will hold. Probably.",
+        "effects": [
+          {"kind": "defense", "params": {"amount": -2}}
+        ]
+      }
+    ]
+  }
+]

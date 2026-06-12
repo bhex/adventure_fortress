@@ -1,0 +1,416 @@
+[
+  {
+    "name": "Bandit Raid",
+    "description": "Bandits strike at dawn, ladders against the walls and torches in hand.",
+    "tags": ["combat"],
+    "min_day": 8,
+    "max_day": 24,
+    "weight": 1.2,
+    "choices": [
+      {
+        "label": "Meet them on the walls",
+        "description": "Blood for blood.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -20}},
+          {"kind": "defense", "params": {"amount": -3}},
+          {"kind": "morale", "params": {"amount": 5}}
+        ]
+      },
+      {
+        "label": "Buy them off",
+        "description": "Treasure is cheaper than funerals.",
+        "cost": {"valuables": 6},
+        "effects": [
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      },
+      {
+        "label": "Hide and endure",
+        "description": "Let them take what they find outside the walls.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -10, "wood": -5}},
+          {"kind": "morale", "params": {"amount": -8}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Plague Outbreak",
+    "description": "Fever spreads through the quarters. Coughing echoes in the night.",
+    "tags": ["disaster"],
+    "min_day": 6,
+    "weight": 0.9,
+    "choices": [
+      {
+        "label": "Quarantine the sick",
+        "description": "Harsh, but it stops the spread.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "farmer", "health": -15, "morale": -5}},
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      },
+      {
+        "label": "Trust the healers",
+        "description": "If you have healers, they will earn their keep tonight.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "farmer", "health": -25, "morale": -5}},
+          {"kind": "apply_to_role", "params": {"role": "healer", "health": 10, "morale": 8}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Desertion Threat",
+    "description": "Whispers in the barracks: some speak openly of leaving.",
+    "tags": ["inhabitants"],
+    "min_day": 6,
+    "max_morale": 45,
+    "choices": [
+      {
+        "label": "Promise better rations",
+        "description": "Full bellies buy loyalty, for a while.",
+        "cost": {"food": 8},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 8}}
+        ]
+      },
+      {
+        "label": "Give a speech",
+        "description": "Words cost nothing. Sometimes they work.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 3}},
+          {"kind": "remove_inhabitant", "params": {}}
+        ]
+      },
+      {
+        "label": "Let them go",
+        "description": "Better gone than grumbling.",
+        "effects": [
+          {"kind": "remove_inhabitant", "params": {}},
+          {"kind": "remove_inhabitant", "params": {}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Noble's Demand",
+    "description": "A rider in fine livery delivers a sealed demand: tribute, in the name of Lord Vexley.",
+    "tags": ["diplomacy"],
+    "min_day": 8,
+    "choices": [
+      {
+        "label": "Pay the tribute",
+        "description": "Swallow your pride, keep the peace.",
+        "cost": {"valuables": 8},
+        "effects": [
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      },
+      {
+        "label": "Refuse",
+        "description": "This fortress bows to no one.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 8}},
+          {"kind": "defense", "params": {"amount": -4}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Refugees at the Gate",
+    "description": "A ragged column of refugees begs entry — a burned village behind them.",
+    "tags": ["diplomacy", "inhabitants"],
+    "min_day": 7,
+    "choices": [
+      {
+        "label": "Open the gates",
+        "description": "More mouths, more hands.",
+        "cost": {"food": 10},
+        "effects": [
+          {"kind": "spawn_inhabitant", "params": {}},
+          {"kind": "spawn_inhabitant", "params": {}},
+          {"kind": "morale", "params": {"amount": 5}}
+        ]
+      },
+      {
+        "label": "Turn them away",
+        "description": "Charity starves the giver.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -6}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Master Smith Passes Through",
+    "description": "A master smith examines your forge and clicks her tongue. \"I could make this proper.\"",
+    "tags": ["upgrade"],
+    "min_day": 8,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Build the Blacksmith",
+        "description": "Better arms — your people take less harm in battle.",
+        "cost": {"wood": 10, "stone": 8},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Blacksmith"}}
+        ]
+      },
+      {
+        "label": "Decline",
+        "description": "The forge works well enough.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "Infirmary Plans",
+    "description": "The healers draft plans for a proper infirmary — beds, herbs, clean water.",
+    "tags": ["upgrade"],
+    "min_day": 9,
+    "requires_role": "healer",
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Build the Infirmary",
+        "description": "Disasters strike half as hard.",
+        "cost": {"wood": 12, "stone": 5},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Infirmary"}},
+          {"kind": "apply_to_role", "params": {"role": "healer", "morale": 10}}
+        ]
+      },
+      {
+        "label": "Shelve the plans",
+        "description": "Herbs and prayers will have to do.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "Granary Construction",
+    "description": "A stone granary would keep the stores safe from rot, rats, and raiders.",
+    "tags": ["upgrade"],
+    "min_day": 8,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Build the Granary",
+        "description": "Opens trade routes; safer stores.",
+        "cost": {"wood": 8, "stone": 12},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Granary"}}
+        ]
+      },
+      {
+        "label": "Not now",
+        "description": "Stone is scarce.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "Barracks Construction",
+    "description": "The guards sleep in the stables. A proper barracks would draw better soldiers.",
+    "tags": ["upgrade"],
+    "min_day": 10,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Build the Barracks",
+        "description": "+5 max population, +2 defense.",
+        "cost": {"wood": 12, "stone": 12},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Barracks"}}
+        ]
+      },
+      {
+        "label": "The stables suffice",
+        "description": "Soldiers have slept in worse.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "morale": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Trade Caravan",
+    "description": "Word of your granary has spread. A wealthy caravan offers serious trade.",
+    "tags": ["economy"],
+    "min_day": 10,
+    "requires_upgrade": "Granary",
+    "choices": [
+      {
+        "label": "Sell grain in bulk",
+        "description": "Their goods are fine and their scales are honest.",
+        "cost": {"food": 15},
+        "effects": [
+          {"kind": "resource", "params": {"valuables": 8}}
+        ]
+      },
+      {
+        "label": "Buy provisions",
+        "description": "Stock up at fair prices.",
+        "cost": {"valuables": 5},
+        "effects": [
+          {"kind": "resource", "params": {"food": 15, "wood": 5}}
+        ]
+      },
+      {
+        "label": "Just trade news",
+        "description": "Information is free.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Scout Report",
+    "description": "From the watchtower, a scout spots movement in the hills — you have warning, this time.",
+    "tags": ["combat"],
+    "min_day": 8,
+    "requires_upgrade": "Watchtower",
+    "choices": [
+      {
+        "label": "Prepare an ambush",
+        "description": "Turn their surprise against them.",
+        "effects": [
+          {"kind": "resource", "params": {"valuables": 4}},
+          {"kind": "morale", "params": {"amount": 5}},
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -8}}
+        ]
+      },
+      {
+        "label": "Reinforce the walls",
+        "description": "Let them break against stone.",
+        "effects": [
+          {"kind": "defense", "params": {"amount": 4}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Festival of Lights",
+    "description": "The old festival falls due. The people look to you, hopeful.",
+    "tags": ["inhabitants"],
+    "min_day": 9,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Hold the festival",
+        "description": "Lanterns, music, and a night without fear.",
+        "cost": {"food": 10},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 12}},
+          {"kind": "apply_to_role", "params": {"role": "farmer", "morale": 8}},
+          {"kind": "apply_to_role", "params": {"role": "guard", "morale": 8}}
+        ]
+      },
+      {
+        "label": "Cancel it",
+        "description": "These are not days for feasting.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -8}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Mine Collapse",
+    "description": "A tunnel under the east slope gives way with workers inside.",
+    "tags": ["disaster"],
+    "min_day": 9,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Dig them out",
+        "description": "Every hand to the rubble.",
+        "effects": [
+          {"kind": "resource", "params": {"wood": -5}},
+          {"kind": "apply_to_role", "params": {"role": "farmer", "health": -10, "morale": 5}},
+          {"kind": "morale", "params": {"amount": 5}}
+        ]
+      },
+      {
+        "label": "Seal the tunnel",
+        "description": "It's too dangerous. May they rest.",
+        "effects": [
+          {"kind": "kill_inhabitant", "params": {}},
+          {"kind": "morale", "params": {"amount": -10}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Mercenary Offer",
+    "description": "A scarred captain offers her company's swords — for a price.",
+    "tags": ["combat", "economy"],
+    "min_day": 10,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Hire them",
+        "description": "Steel you can count, loyalty you can't.",
+        "cost": {"valuables": 6},
+        "effects": [
+          {"kind": "defense", "params": {"amount": 6}},
+          {"kind": "spawn_inhabitant", "params": {"role": "guard"}}
+        ]
+      },
+      {
+        "label": "Refuse politely",
+        "description": "Sellswords cut both ways.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "Thieves in the Night",
+    "description": "Someone has been at the strongbox. The lock is scratched, the count short.",
+    "tags": ["economy"],
+    "min_day": 8,
+    "choices": [
+      {
+        "label": "Post extra watches",
+        "description": "Guards lose sleep; thieves lose nerve.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "morale": -5}},
+          {"kind": "resource", "params": {"valuables": -2}}
+        ]
+      },
+      {
+        "label": "Let it go",
+        "description": "Whoever it was, they needed it more.",
+        "effects": [
+          {"kind": "resource", "params": {"valuables": -4}},
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Romance in the Keep",
+    "description": "Two of your people are to be wed. The whole fortress is talking.",
+    "tags": ["inhabitants"],
+    "min_day": 8,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Host the wedding",
+        "description": "Joy is rare; spend on it.",
+        "cost": {"food": 5},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 10}}
+        ]
+      },
+      {
+        "label": "A quiet blessing",
+        "description": "Congratulate them and move on.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 4}}
+        ]
+      }
+    ]
+  }
+]

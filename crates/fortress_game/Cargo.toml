@@ -1,0 +1,10 @@
+[package]
+name = "fortress_game"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fortress_core = { path = "../fortress_core" }
+bevy = "0.18"
+bevy_ascii_terminal = "0.18"
+rand = "0.9"

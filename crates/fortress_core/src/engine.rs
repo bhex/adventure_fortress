@@ -1,0 +1,411 @@
+use rand::Rng;
+
+use crate::events::{Choice, Effect, Event, EventResult};
+use crate::fortress::Upgrade;
+use crate::game_state::GameState;
+use crate::inhabitants::{generate_inhabitant, Role, Trait};
+use crate::player::{ClassKind, PlayerAbility, PlayerCharacter, StatKind};
+use crate::resources::ResourceDelta;
+use crate::rng::weighted_index;
+use crate::skills::{Skill, SkillTier};
+
+/// Who trains what from living through an event with this tag.
+fn training_for_tag(tag: &str) -> &'static [(Role, Skill, u32)] {
+    match tag {
+        "combat" => &[(Role::Guard, Skill::Combat, 8)],
+        "disaster" => &[(Role::Healer, Skill::Medicine, 8)],
+        "economy" => &[
+            (Role::Blacksmith, Skill::Smithing, 6),
+            (Role::Farmer, Skill::Crafting, 6),
+        ],
+        _ => &[],
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChoiceAvailability {
+    Ok,
+    CantAfford,
+    StatLocked(StatKind, u8),
+}
+
+pub fn eligible_events<'a>(
+    deck: &'a [Event],
+    day: u32,
+    gs: &GameState,
+    last_event_name: Option<&str>,
+) -> Vec<&'a Event> {
+    deck.iter()
+        .filter(|e| {
+            e.min_day <= day
+                && e.max_day.is_none_or(|max| day <= max)
+                && e.min_morale <= gs.fortress.morale
+                && gs.fortress.morale <= e.max_morale
+                && gs.resources.can_afford(&e.min_resource)
+                && e.requires_role.is_none_or(|r| gs.inhabitants.has_role(r))
+                && e.requires_upgrade.is_none_or(|u| gs.fortress.has_upgrade(u))
+                && e.min_darkness.is_none_or(|d| gs.region.darkness >= d)
+                && e.max_darkness.is_none_or(|d| gs.region.darkness <= d)
+                && last_event_name != Some(e.name.as_str())
+        })
+        .collect()
+}
+
+pub fn roll<'a>(
+    deck: &'a [Event],
+    day: u32,
+    gs: &mut GameState,
+    last_event_name: Option<&str>,
+) -> Option<&'a Event> {
+    let pool = eligible_events(deck, day, gs, last_event_name);
+    if pool.is_empty() {
+        return None;
+    }
+    let weights: Vec<f64> = pool.iter().map(|e| e.weight).collect();
+    let idx = weighted_index(&mut gs.rng, &weights)?;
+    Some(pool[idx])
+}
+
+/// Effective cost of a choice for this player (Steward discount on economy events).
+pub fn effective_cost(choice: &Choice, event: &Event, player: Option<&PlayerCharacter>) -> ResourceDelta {
+    let mut cost = choice.cost.clone();
+    let is_steward = player.is_some_and(|p| p.class == ClassKind::Steward);
+    if is_steward && event.has_tag("economy") && !cost.is_zero() {
+        for v in [&mut cost.food, &mut cost.valuables, &mut cost.stone, &mut cost.wood] {
+            if *v > 0 {
+                *v = (*v * 4 / 5).max(1);
+            }
+        }
+    }
+    cost
+}
+
+pub fn choice_availability(
+    choice: &Choice,
+    event: &Event,
+    gs: &GameState,
+) -> ChoiceAvailability {
+    if let Some(player) = &gs.player {
+        for (stat, min) in &choice.requires_stat {
+            if player.stats.get(*stat) < *min {
+                return ChoiceAvailability::StatLocked(*stat, *min);
+            }
+        }
+    }
+    let cost = effective_cost(choice, event, gs.player.as_ref());
+    if !gs.resources.can_afford(&cost) {
+        return ChoiceAvailability::CantAfford;
+    }
+    ChoiceAvailability::Ok
+}
+
+pub fn resolve(event: &Event, choice_index: usize, gs: &mut GameState) -> EventResult {
+    let choice = &event.choices[choice_index];
+    let mut result = EventResult {
+        event_name: event.name.clone(),
+        choice_label: choice.label.clone(),
+        lines: Vec::new(),
+    };
+
+    let cost = effective_cost(choice, event, gs.player.as_ref());
+    if !cost.is_zero() {
+        gs.resources.apply_delta(&cost.negated());
+        result.lines.push(format!("Paid {}.", cost.describe_cost()));
+    }
+
+    if let Some(flavor) = &choice.flavor {
+        let name = gs.player.as_ref().map(|p| p.name.clone()).unwrap_or_default();
+        result.lines.push(flavor.replace("{player}", &name));
+    }
+
+    for effect in &choice.effects {
+        apply_effect(effect, event, gs, &mut result);
+    }
+
+    if let Some(check) = &choice.stat_check {
+        if let Some(player) = gs.player.clone() {
+            let stat_value = player.stats.get(check.stat) as i32;
+            let die = gs.rng.random_range(1..=6);
+            let total = stat_value + die;
+            // Silver Tongue: difficulty -1
+            let difficulty = if player.has_ability(PlayerAbility::SilverTongue) {
+                check.difficulty.saturating_sub(1)
+            } else {
+                check.difficulty
+            };
+            let success = total >= difficulty as i32;
+            result.lines.push(format!(
+                "{} check: {} + {} = {} vs {} — {}",
+                check.stat.name(),
+                stat_value,
+                die,
+                total,
+                difficulty,
+                if success { "success!" } else { "failure." }
+            ));
+            let branch = if success { &check.success_effects } else { &check.failure_effects };
+            for effect in branch {
+                apply_effect(effect, event, gs, &mut result);
+            }
+            // Living Legend: +3 morale on success
+            if success && player.has_ability(PlayerAbility::LivingLegend) {
+                gs.fortress.apply_morale_delta(3);
+                result.lines.push("Living Legend: your triumph lifts spirits. (+3 morale)".to_string());
+            }
+        }
+    }
+
+    // War Cry: after combat events, guards gain +10 morale
+    if event.has_tag("combat") && gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::WarCry)) {
+        let count = gs.inhabitants.get_by_role(Role::Guard).len();
+        if count > 0 {
+            gs.inhabitants.apply_to_role(Role::Guard, 0, 10);
+            result.lines.push("War Cry: the guards are emboldened. (guards +10 morale)".to_string());
+        }
+    }
+
+    // Living through events is training: survivors learn from what they faced.
+    for tag in &event.tags {
+        for (role, skill, xp) in training_for_tag(tag) {
+            for line in train_role(gs, *role, *skill, *xp) {
+                result.lines.push(line);
+            }
+        }
+    }
+
+    // Battle spends steel: arms break, arrows fly, edges dull.
+    if event.has_tag("combat") && gs.resources.gear > 0 {
+        let spent = gs.resources.gear.min(3);
+        gs.resources.gear -= spent;
+        if gs.resources.gear == 0 {
+            result.lines.push("The armory stands empty.".to_string());
+        }
+    }
+
+    gs.events_resolved += 1;
+    result
+}
+
+/// Train every living member of a role; returns tier-up log lines.
+/// A guard reaching a new Combat tier hardens the fortress (+1 defense).
+pub fn train_role(gs: &mut GameState, role: Role, skill: Skill, xp: u32) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut guard_tier_ups = 0;
+    for i in gs.inhabitants.inhabitants.iter_mut().filter(|i| i.is_alive && i.role == role) {
+        if let Some(tier) = i.skills.train(skill, xp) {
+            lines.push(format!(
+                "{} is now a {} {}.",
+                i.name,
+                tier.name(),
+                skill.practitioner()
+            ));
+            if role == Role::Guard && skill == Skill::Combat {
+                guard_tier_ups += 1;
+            }
+        }
+    }
+    for _ in 0..guard_tier_ups {
+        gs.fortress.apply_defense_delta(1);
+        lines.push("The watch grows harder. (+1 defense)".to_string());
+    }
+    lines
+}
+
+fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut EventResult) {
+    match effect {
+        Effect::Resource(delta) => {
+            gs.resources.apply_delta(delta);
+            result.lines.push(format!("{}.", delta.describe()));
+        }
+
+        Effect::Morale { amount } => {
+            let mut amount = *amount;
+            // Iron Will: morale losses reduced by 2
+            if amount < 0 && gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::IronWill)) {
+                amount = (amount + 2).min(0);
+            }
+            gs.fortress.apply_morale_delta(amount);
+            result.lines.push(format!(
+                "Fortress morale {}{}.",
+                if amount >= 0 { "+" } else { "" },
+                amount
+            ));
+        }
+
+        Effect::Defense { amount } => {
+            let mut amount = *amount;
+            // Tactician: defense floor at 10
+            if amount < 0 && gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::Tactician)) {
+                let new_def = (gs.fortress.defense + amount).max(10);
+                amount = new_def - gs.fortress.defense;
+            }
+            gs.fortress.apply_defense_delta(amount);
+            result.lines.push(format!(
+                "Defense {}{}.",
+                if amount >= 0 { "+" } else { "" },
+                amount
+            ));
+        }
+
+        Effect::SpawnInhabitant { role } => {
+            if gs.inhabitants.count_alive() as u32 >= gs.fortress.max_population {
+                result.lines.push("The fortress is full — they move on.".to_string());
+                return;
+            }
+            let role = role.unwrap_or_else(|| {
+                let idx = gs.rng.random_range(0..Role::ALL.len());
+                Role::ALL[idx]
+            });
+            let newcomer = generate_inhabitant(role, &mut gs.rng);
+            let traits = if newcomer.traits.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " ({})",
+                    newcomer.traits.iter().map(|t| t.name()).collect::<Vec<_>>().join(", ")
+                )
+            };
+            result.lines.push(format!(
+                "{} the {}{} joins the fortress.",
+                newcomer.name,
+                newcomer.role.name(),
+                traits
+            ));
+            gs.inhabitants.add(newcomer);
+        }
+
+        Effect::KillInhabitant { role } => {
+            if let Some(name) = gs.inhabitants.random_survivor_name(&mut gs.rng, *role) {
+                if let Some(victim) = gs.inhabitants.find_mut(&name) {
+                    victim.is_alive = false;
+                    victim.health = 0;
+                    let role_name = victim.role.name();
+                    result.lines.push(format!("{name} the {role_name} has died."));
+                }
+                gs.fortress.apply_morale_delta(-3);
+            }
+        }
+
+        Effect::RemoveInhabitant {} => {
+            // Oath Keeper: nobody leaves
+            if gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::OathKeeper)) {
+                result.lines.push("Oath Keeper: your bond holds — no one deserts.".to_string());
+                return;
+            }
+            if let Some(name) = gs.inhabitants.random_non_loyal_name(&mut gs.rng) {
+                let role_name = gs
+                    .inhabitants
+                    .find_mut(&name)
+                    .map(|i| i.role.name())
+                    .unwrap_or("inhabitant");
+                result.lines.push(format!("{name} the {role_name} slips away in the night."));
+                gs.inhabitants.remove(&name);
+            } else {
+                result.lines.push("The inhabitants stand together — no one deserts.".to_string());
+            }
+        }
+
+        Effect::ApplyToRole { role, health, morale } => {
+            let mut health = *health;
+            if health < 0 {
+                health = mitigate_damage(health, event, gs);
+            }
+            let deaths = gs.inhabitants.apply_to_role(*role, health, *morale);
+            if health != 0 || *morale != 0 {
+                let mut desc = Vec::new();
+                if health != 0 {
+                    desc.push(format!("{}{} health", if health > 0 { "+" } else { "" }, health));
+                }
+                if *morale != 0 {
+                    desc.push(format!("{}{} morale", if *morale > 0 { "+" } else { "" }, morale));
+                }
+                result.lines.push(format!("All {}s: {}.", role.name(), desc.join(", ")));
+            }
+            for name in deaths {
+                result.lines.push(format!("{} the {} succumbs.", name, role.name()));
+                gs.fortress.apply_morale_delta(-3);
+            }
+        }
+
+        Effect::AddUpgrade { name } => {
+            let line = gs.build_upgrade(*name);
+            result.lines.push(line);
+        }
+
+        Effect::Region { darkness, site_strength, pressure } => {
+            if *darkness != 0 {
+                gs.region.darkness = (gs.region.darkness + darkness).clamp(0, 100);
+                result.lines.push(if *darkness < 0 {
+                    "The darkness recedes, a little.".to_string()
+                } else {
+                    "The darkness thickens.".to_string()
+                });
+            }
+            if *pressure != 0 {
+                gs.region.portal_pressure = (gs.region.portal_pressure + pressure).max(0);
+                result.lines.push(if *pressure < 0 {
+                    "A portal gutters and shrinks.".to_string()
+                } else {
+                    "The portals yawn wider.".to_string()
+                });
+            }
+            if *site_strength != 0 {
+                if let Some(name) = gs.region.adjust_random_site(&mut gs.rng, *site_strength) {
+                    result.lines.push(if *site_strength > 0 {
+                        format!("Your aid reaches {name} — they fight on.")
+                    } else {
+                        format!("{name} bears the cost.")
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Traits, upgrades, and abilities soften incoming damage based on event tags.
+/// Integer math: 25% steps via -(-h*3//4), 50% via -(-h//2).
+fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32 {
+    let mut h = health;
+    // Demons strike harder as the darkness deepens (h is negative here).
+    if event.has_tag("demon") {
+        match gs.region.band() {
+            crate::region::DarknessBand::Deep => h += h / 4,
+            crate::region::DarknessBand::Overwhelming => h += h / 2,
+            _ => {}
+        }
+    }
+    if event.has_tag("combat") {
+        if gs.fortress.has_upgrade(Upgrade::Blacksmith) {
+            h = -((-h * 3) / 4);
+        }
+        if gs.inhabitants.get_by_role(Role::Guard).iter().any(|i| i.has_trait(Trait::Brave)) {
+            h = -((-h * 3) / 4);
+        }
+        // A veteran on the walls: best guard at Skilled+ softens the blow.
+        if gs
+            .inhabitants
+            .get_by_role(Role::Guard)
+            .iter()
+            .any(|i| i.skills.tier(Skill::Combat) >= SkillTier::Skilled)
+        {
+            h = -((-h * 3) / 4);
+        }
+        // A well-stocked armory: good gear turns blades.
+        if gs.resources.band(crate::resources::ResourceKind::Gear)
+            >= crate::resources::StockBand::Adequate
+        {
+            h = -((-h * 3) / 4);
+        }
+        if gs.player.as_ref().is_some_and(|p| p.class == ClassKind::Warlord) {
+            h = -((-h * 3) / 4);
+        }
+        // Battle Hardened: additional 25% combat damage reduction
+        if gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::BattleHardened)) {
+            h = -((-h * 3) / 4);
+        }
+    }
+    if event.has_tag("disaster") && gs.fortress.has_upgrade(Upgrade::Infirmary) {
+        h = -((-h) / 2);
+    }
+    h
+}

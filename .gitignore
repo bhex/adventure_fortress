@@ -1,0 +1,6 @@
+.aider*
+__pycache__/
+*.pyc
+.pytest_cache/
+save.json
+target/
