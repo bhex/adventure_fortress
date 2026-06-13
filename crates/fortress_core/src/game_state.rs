@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::adventurers::{generate_adventurer, Adventurer, AdventurerClass};
 use crate::engine::train_role;
-use crate::fortress::{Fortress, Upgrade};
+use crate::fortress::{level_numeral, BuildOutcome, Fortress, Upgrade};
 use crate::region::DarknessBand;
 use crate::inhabitants::{generate_inhabitant, InhabitantManager, Role};
 use crate::player::{ability_offers, ClassKind, PlayerAbility, PlayerCharacter};
@@ -13,7 +13,7 @@ use crate::resources::{ResourceDelta, Resources};
 use crate::rng::GameRng;
 use crate::skills::Skill;
 
-pub const SAVE_VERSION: u32 = 4;
+pub const SAVE_VERSION: u32 = 5;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 pub const LEVEL_UP_INTERVAL: u32 = 3;
@@ -28,11 +28,12 @@ pub enum SaveError {
     Version(u32),
 }
 
-/// Why a building can or can't go up right now.
+/// Why a building can or can't go up (or tier up) right now.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BuildAvailability {
     Ok,
-    AlreadyBuilt,
+    /// Tier III already, or every housing plot taken.
+    MaxLevel,
     MissingRole(Role),
     CantAfford,
 }
@@ -105,36 +106,55 @@ impl GameState {
     // Progression
     // ------------------------------------------------------------------
 
+    /// Build at level 1 or raise one tier, applying the step's bonuses.
+    /// Events use this too: granting an already-built building upgrades it.
     pub fn build_upgrade(&mut self, upgrade: Upgrade) -> String {
-        if self.fortress.has_upgrade(upgrade) {
-            return format!("{} is already built.", upgrade.name());
-        }
-        self.fortress.add_upgrade(upgrade);
-        match upgrade {
-            Upgrade::Watchtower => self.fortress.apply_defense_delta(5),
-            Upgrade::Barracks => {
-                self.fortress.max_population += 5;
-                self.fortress.apply_defense_delta(2);
+        match self.fortress.add_building(upgrade) {
+            BuildOutcome::Built => {
+                match upgrade {
+                    Upgrade::Watchtower => self.fortress.apply_defense_delta(5),
+                    Upgrade::Barracks => {
+                        self.fortress.max_population += 5;
+                        self.fortress.apply_defense_delta(2);
+                    }
+                    Upgrade::Housing => self.fortress.max_population += 5,
+                    _ => {}
+                }
+                // Word of a growing fortress travels.
+                self.apply_reputation_delta(2);
+                format!("{} has been built!", upgrade.name())
             }
-            Upgrade::Inn => self.fortress.max_population += 5,
-            _ => {}
+            BuildOutcome::Upgraded(level) => {
+                match (upgrade, level) {
+                    (Upgrade::Watchtower, 2) => self.fortress.apply_defense_delta(3),
+                    (Upgrade::Watchtower, _) => self.fortress.apply_defense_delta(4),
+                    (Upgrade::Barracks, _) => {
+                        self.fortress.max_population += 2;
+                        self.fortress.apply_defense_delta(1);
+                    }
+                    _ => {}
+                }
+                self.apply_reputation_delta(1);
+                format!("The {} has been raised to tier {}!", upgrade.name(), level_numeral(level))
+            }
+            BuildOutcome::AtMax => {
+                format!("The {} already stands at its height.", upgrade.name())
+            }
+            BuildOutcome::NoPlots => "There is no room for more housing.".to_string(),
         }
-        // Word of a growing fortress travels.
-        self.apply_reputation_delta(2);
-        format!("{} has been built!", upgrade.name())
     }
 
-    /// Whether the build menu may raise this upgrade right now.
+    /// Whether the build menu may raise (or tier up) this building right now.
     pub fn build_availability(&self, upgrade: Upgrade) -> BuildAvailability {
-        if self.fortress.has_upgrade(upgrade) {
-            return BuildAvailability::AlreadyBuilt;
-        }
+        let Some(next_level) = self.fortress.next_build_level(upgrade) else {
+            return BuildAvailability::MaxLevel;
+        };
         if let Some(role) = upgrade.required_role() {
             if !self.inhabitants.has_role(role) {
                 return BuildAvailability::MissingRole(role);
             }
         }
-        if !self.resources.can_afford(&upgrade.build_cost()) {
+        if !self.resources.can_afford(&upgrade.build_cost(next_level)) {
             return BuildAvailability::CantAfford;
         }
         BuildAvailability::Ok
@@ -144,7 +164,8 @@ impl GameState {
     pub fn construct(&mut self, upgrade: Upgrade) -> Result<String, BuildAvailability> {
         match self.build_availability(upgrade) {
             BuildAvailability::Ok => {
-                self.resources.apply_delta(&upgrade.build_cost().negated());
+                let level = self.fortress.next_build_level(upgrade).unwrap_or(1);
+                self.resources.apply_delta(&upgrade.build_cost(level).negated());
                 Ok(self.build_upgrade(upgrade))
             }
             blocked => Err(blocked),
@@ -207,10 +228,14 @@ impl GameState {
 
         // Adventurers: heroes seek a guild, a name worth the road — and a fight.
         // The deeper the darkness, the more of them come looking for it.
-        if self.fortress.has_upgrade(Upgrade::AdventurersGuild)
-            && self.reputation >= ADVENTURER_MIN_REPUTATION
-            && self.adventurers.len() < MAX_ADVENTURERS
-        {
+        // The guild's tier sets how many heroes it can host.
+        let hero_cap = match self.fortress.building_level(Upgrade::AdventurersGuild) {
+            0 => 0,
+            1 => 2,
+            2 => 3,
+            _ => MAX_ADVENTURERS,
+        };
+        if self.reputation >= ADVENTURER_MIN_REPUTATION && self.adventurers.len() < hero_cap {
             let mut chance = self.reputation; // per-mille
             match self.region.band() {
                 DarknessBand::Deep => chance *= 2,
@@ -290,32 +315,75 @@ impl GameState {
                 lines.extend(train_role(self, role, role.home_skill(), 2));
             }
         }
+        // The Training Yard drills the guards harder with every tier.
+        let yard_xp = match self.fortress.building_level(Upgrade::TrainingYard) {
+            0 => 0,
+            1 => 2,
+            2 => 4,
+            _ => 6,
+        };
+        if yard_xp > 0 {
+            lines.extend(train_role(self, Role::Guard, Skill::Combat, yard_xp));
+        }
+        // A good Workshop makes crafters of everyone.
+        if self.fortress.building_level(Upgrade::Workshop) >= 2 {
+            for i in self.inhabitants.inhabitants.iter_mut().filter(|i| i.is_alive) {
+                i.skills.train(Skill::Crafting, 1);
+            }
+        }
 
         // Craftwork: smiths forge gear at the smithy; everyone whittles tools.
-        if self.fortress.has_upgrade(Upgrade::Blacksmith) {
-            let forged: i64 = self
+        let smithy_level = self.fortress.building_level(Upgrade::Blacksmith);
+        if smithy_level > 0 {
+            let tier_sum: i64 = self
                 .inhabitants
                 .get_by_role(Role::Blacksmith)
                 .iter()
                 .map(|i| i.skills.tier(Skill::Smithing).index() as i64)
                 .sum();
+            // ×1 / ×1.5 / ×2 by smithy tier, integer math
+            let forged = tier_sum * (smithy_level as i64 + 1) / 2;
             if forged > 0 && self.resources.gear < 60 {
                 self.resources.apply_delta(&ResourceDelta { gear: forged, ..Default::default() });
                 lines.push("The forge rings; the armory grows.".to_string());
             }
         }
+        // Tool output scales with the Workshop: ×1 base, ×1.5/×2/×3 by tier.
         let whittled: i64 = self
             .inhabitants
             .get_alive()
             .iter()
             .map(|i| i.skills.tier(Skill::Crafting).index() as i64)
             .sum::<i64>()
-            / 2;
+            * match self.fortress.building_level(Upgrade::Workshop) {
+                0 => 2,
+                1 => 3,
+                2 => 4,
+                _ => 6,
+            }
+            / 4;
         if whittled > 0 && self.resources.tools < 60 {
             self.resources.apply_delta(&ResourceDelta { tools: whittled, ..Default::default() });
         }
 
-        if self.fortress.has_upgrade(Upgrade::Farm) {
+        // The Lumberyard works the woods.
+        let yard_wood = match self.fortress.building_level(Upgrade::Lumberyard) {
+            0 => 0,
+            1 => 2,
+            2 => 3,
+            _ => 5,
+        };
+        if yard_wood > 0 {
+            self.resources.apply_delta(&ResourceDelta { wood: yard_wood, ..Default::default() });
+        }
+
+        let farm_level = self.fortress.building_level(Upgrade::Farm);
+        if farm_level > 0 {
+            let base: i64 = match farm_level {
+                1 => 3,
+                2 => 5,
+                _ => 7,
+            };
             let skill_bonus: u32 = self
                 .inhabitants
                 .get_by_role(Role::Farmer)
@@ -329,17 +397,34 @@ impl GameState {
                 } else {
                     0
                 };
-            let harvest = 3 + skill_bonus as i64 + tool_bonus;
+            let harvest = base + skill_bonus as i64 + tool_bonus;
             self.resources.apply_delta(&ResourceDelta { food: harvest, ..Default::default() });
             lines.push("The farm brings in the harvest.".to_string());
         }
-        // The Inn: a warm hearth and a full common room lift every heart.
-        if self.fortress.has_upgrade(Upgrade::Inn) {
-            self.fortress.apply_morale_delta(1);
-            lines.push("Laughter drifts from the inn. (+1 morale)".to_string());
+
+        // Spoilage: grain rots beyond what the stores can keep dry — the
+        // Granary is what makes a deep larder possible.
+        let food_cap = match self.fortress.building_level(Upgrade::Granary) {
+            0 => 50,
+            1 => 60,
+            2 => 90,
+            _ => 130,
+        };
+        if self.resources.food > food_cap {
+            let excess = self.resources.food - food_cap;
+            self.resources.food = food_cap + excess * 3 / 4;
+            lines.push("Some of the surplus grain spoils in the open.".to_string());
         }
 
-        if self.fortress.has_upgrade(Upgrade::Infirmary) {
+        // The Tavern: a warm hearth and a full common room lift every heart.
+        let tavern_cheer = self.fortress.building_level(Upgrade::Tavern) as i32;
+        if tavern_cheer > 0 {
+            self.fortress.apply_morale_delta(tavern_cheer);
+            lines.push(format!("Laughter drifts from the tavern. (+{tavern_cheer} morale)"));
+        }
+
+        let infirmary_level = self.fortress.building_level(Upgrade::Infirmary);
+        if infirmary_level > 0 {
             for i in self
                 .inhabitants
                 .inhabitants
@@ -350,24 +435,31 @@ impl GameState {
             }
         }
 
-        // Medicine: the healers tend the worst-off patient.
-        let healing: i32 = self
+        // Medicine: the healers tend the worst-off; a great Infirmary heals
+        // deeper (tier II) and has beds for a second patient (tier III).
+        let mut healing: i32 = self
             .inhabitants
             .get_by_role(Role::Healer)
             .iter()
             .map(|i| 2 * i.skills.tier(Skill::Medicine).index() as i32)
             .sum();
+        if healing > 0 && infirmary_level >= 2 {
+            healing += 2;
+        }
         if healing > 0 {
-            if let Some(patient) = self
-                .inhabitants
-                .inhabitants
-                .iter_mut()
-                .filter(|i| i.is_alive && i.health < 100)
-                .min_by_key(|i| i.health)
-            {
-                patient.heal(healing);
-                let name = patient.name.clone();
-                lines.push(format!("The healers tend {name}. (+{healing} health)"));
+            let patients = if infirmary_level >= 3 { 2 } else { 1 };
+            for _ in 0..patients {
+                if let Some(patient) = self
+                    .inhabitants
+                    .inhabitants
+                    .iter_mut()
+                    .filter(|i| i.is_alive && i.health < 100)
+                    .min_by_key(|i| i.health)
+                {
+                    patient.heal(healing);
+                    let name = patient.name.clone();
+                    lines.push(format!("The healers tend {name}. (+{healing} health)"));
+                }
             }
         }
 

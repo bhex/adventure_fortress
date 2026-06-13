@@ -78,16 +78,32 @@ fn spawn_menu_ui(commands: &mut Commands, gs: &GameState) {
                     for upgrade in Upgrade::ALL {
                         let availability = gs.build_availability(upgrade);
                         let enabled = availability == BuildAvailability::Ok;
+                        let next = gs.fortress.next_build_level(upgrade).unwrap_or(0);
+
+                        // current standing: tier numeral, or plots for housing
+                        let standing = if upgrade == Upgrade::Housing {
+                            format!(" ({}/{} plots)", gs.fortress.housing_units(), fortress_core::HOUSING_PLOTS)
+                        } else {
+                            match gs.fortress.building_level(upgrade) {
+                                0 => String::new(),
+                                l => format!(" {}", fortress_core::level_numeral(l)),
+                            }
+                        };
+                        let verb = if gs.fortress.has_upgrade(upgrade) && upgrade != Upgrade::Housing {
+                            format!("upgrade to {}", fortress_core::level_numeral(next))
+                        } else {
+                            "build".to_string()
+                        };
                         let suffix = match availability {
                             BuildAvailability::Ok => {
-                                format!("  (costs {})", upgrade.build_cost().describe_cost())
+                                format!("  — {} (costs {})", verb, upgrade.build_cost(next).describe_cost())
                             }
-                            BuildAvailability::AlreadyBuilt => "  — already built".to_string(),
+                            BuildAvailability::MaxLevel => "  — at its height".to_string(),
                             BuildAvailability::MissingRole(role) => {
                                 format!("  [needs a {}]", role.name())
                             }
                             BuildAvailability::CantAfford => {
-                                format!("  (can't afford: {})", upgrade.build_cost().describe_cost())
+                                format!("  — {} (can't afford: {})", verb, upgrade.build_cost(next).describe_cost())
                             }
                         };
 

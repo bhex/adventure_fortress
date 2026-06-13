@@ -239,6 +239,17 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
 
         Effect::Morale { amount } => {
             let mut amount = *amount;
+            // The Shrine steadies hearts against the dark: demon-driven
+            // despair softened by 25/50/75% per tier.
+            if amount < 0 && event.has_tag("demon") {
+                let kept = match gs.fortress.building_level(Upgrade::Shrine) {
+                    0 => 4,
+                    1 => 3,
+                    2 => 2,
+                    _ => 1,
+                };
+                amount = -((-amount * kept) / 4);
+            }
             // Iron Will: morale losses reduced by 2
             if amount < 0 && gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::IronWill)) {
                 amount = (amount + 2).min(0);
@@ -398,6 +409,10 @@ fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32 {
     }
     if event.has_tag("combat") {
         if gs.fortress.has_upgrade(Upgrade::Blacksmith) {
+            h = -((-h * 3) / 4);
+        }
+        // A master forge (tier III) turns even demon steel.
+        if gs.fortress.building_level(Upgrade::Blacksmith) >= 3 {
             h = -((-h * 3) / 4);
         }
         if gs.inhabitants.get_by_role(Role::Guard).iter().any(|i| i.has_trait(Trait::Brave)) {
