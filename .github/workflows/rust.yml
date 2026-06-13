@@ -16,7 +16,27 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    # Bevy (via the game crate) links against Linux system libraries — audio,
+    # input, and the Wayland/X11 windowing stack. Without these the build
+    # panics in wayland-sys' build script (pkg-config can't find wayland-client).
+    - name: Install Bevy system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          pkg-config \
+          libasound2-dev \
+          libudev-dev \
+          libwayland-dev \
+          libxkbcommon-dev
+    - name: Cache cargo
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --workspace --verbose
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --workspace --verbose

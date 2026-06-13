@@ -468,6 +468,20 @@ fn update_inspect(
             }
             None => String::new(),
         },
+        Some(Selection::Hero(name)) => {
+            match game.0.adventurers.iter().find(|a| &a.name == name) {
+                Some(a) => format!(
+                    "{} the {}\nWandering hero\nPerk: {} ({} {})\n\n{}",
+                    a.name,
+                    a.class.name(),
+                    a.class.perk_name(),
+                    a.perk_tier().name(),
+                    a.class.home_skill().practitioner(),
+                    skill_bars(&a.skills),
+                ),
+                None => String::new(),
+            }
+        }
         Some(Selection::Inhabitant(name)) => {
             match game.0.inhabitants.inhabitants.iter().find(|i| &i.name == name) {
                 Some(i) => {

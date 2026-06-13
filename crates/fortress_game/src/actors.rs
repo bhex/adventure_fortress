@@ -52,6 +52,9 @@ pub struct Wander {
     pub target: Option<IVec2>,
     pub idle_ticks: u8,
     pub timer: Timer,
+    /// True only once an actor has actually reached its bed — drives the
+    /// sleeping glyph, so folk still walking at night aren't shown as asleep.
+    pub asleep: bool,
 }
 
 /// Spawn entities for new inhabitants, despawn entities for the dead/departed.
@@ -102,7 +105,8 @@ fn sync_actors(
             Wander {
                 target: None,
                 idle_ticks: 0,
-                timer: Timer::from_seconds(rng.random_range(0.35..0.6), TimerMode::Repeating),
+                timer: Timer::from_seconds(rng.random_range(0.18..0.32), TimerMode::Repeating),
+                asleep: false,
             },
         ));
     }
@@ -219,14 +223,18 @@ fn wander(
             continue;
         }
 
-        // Dusk/Night: head to bed; asleep once there.
+        // Dusk/Night: head to bed; asleep only once actually there.
         if bedtime {
             let Some(&bed) = beds.get(&actor.name) else { continue };
             if pos.0 == bed {
+                wander.asleep = true;
                 continue; // zzz
             }
+            wander.asleep = false;
             wander.target = Some(bed);
             wander.idle_ticks = 0;
+        } else if wander.asleep {
+            wander.asleep = false;
         } else if wander.idle_ticks > 0 {
             wander.idle_ticks -= 1;
             continue;

@@ -228,7 +228,7 @@ fn redraw_terminal(
     clock: Res<GameClock>,
     hovered: Res<Hovered>,
     selected: Res<Selected>,
-    actors: Query<(&Actor, &GridPos, &Glyph)>,
+    actors: Query<(&Actor, &GridPos, &Glyph, &crate::actors::Wander)>,
 ) {
     let Ok(mut term) = terminals.single_mut() else {
         return;
@@ -257,8 +257,9 @@ fn redraw_terminal(
         }
     }
 
-    for (_, pos, glyph) in actors.iter() {
-        let ch = if phase == DayPhase::Night { 'z' } else { glyph.ch };
+    for (_, pos, glyph, wander) in actors.iter() {
+        // 'z' only for those actually bedded down — walkers keep their glyph.
+        let ch = if wander.asleep { 'z' } else { glyph.ch };
         term.put_char([pos.0.x as usize, pos.0.y as usize], ch)
             .fg(phase_tint(glyph.color, phase));
     }
@@ -269,7 +270,7 @@ fn redraw_terminal(
         highlights.push((p, Color::srgb(0.25, 0.25, 0.35)));
     }
     if let Some(Selection::Inhabitant(name)) = &selected.0 {
-        for (actor, pos, _) in actors.iter() {
+        for (actor, pos, _, _) in actors.iter() {
             if &actor.name == name {
                 highlights.push((pos.0, Color::srgb(0.2, 0.35, 0.2)));
             }

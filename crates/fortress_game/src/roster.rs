@@ -80,6 +80,7 @@ struct RosterRoot;
 enum RowTarget {
     None,
     Commander,
+    Hero(String),
     Inhabitant(String),
 }
 
@@ -133,7 +134,7 @@ impl RosterEntry {
     fn target(&self) -> RowTarget {
         match &self.kind {
             RowKind::Commander => RowTarget::Commander,
-            RowKind::Hero => RowTarget::None,
+            RowKind::Hero => RowTarget::Hero(self.name.clone()),
             RowKind::Inhabitant(_) => RowTarget::Inhabitant(self.name.clone()),
         }
     }
@@ -153,14 +154,15 @@ fn snapshot(game: &Game, controls: &RosterControls) -> RosterSnap {
         });
     }
 
-    // resident heroes next — with their perk named
+    // resident heroes next — clickable, with class + perk in the detail line
     for a in &gs.adventurers {
         rows.push(RosterEntry {
             kind: RowKind::Hero,
             glyph: '&',
-            name: format!("{} the {}", a.name, a.class.name()),
+            name: a.name.clone(),
             detail: format!(
-                "{} {} · {}",
+                "{} · {} {} · {}",
+                a.class.name(),
                 a.perk_tier().name(),
                 a.class.home_skill().practitioner(),
                 a.class.perk_name()
@@ -366,6 +368,7 @@ fn row_click(
         }
         match &row.target {
             RowTarget::Commander => selected.0 = Some(Selection::Commander),
+            RowTarget::Hero(name) => selected.0 = Some(Selection::Hero(name.clone())),
             RowTarget::Inhabitant(name) => {
                 selected.0 = Some(Selection::Inhabitant(name.clone()))
             }
@@ -383,6 +386,7 @@ fn highlight_selected_row(
     for (interaction, row, mut bg) in rows.iter_mut() {
         let is_selected = match (&selected.0, &row.target) {
             (Some(Selection::Commander), RowTarget::Commander) => true,
+            (Some(Selection::Hero(n)), RowTarget::Hero(m)) => n == m,
             (Some(Selection::Inhabitant(n)), RowTarget::Inhabitant(m)) => n == m,
             _ => false,
         };

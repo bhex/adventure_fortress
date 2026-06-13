@@ -42,6 +42,7 @@ impl GameLog {
 pub enum Selection {
     Inhabitant(String),
     Commander,
+    Hero(String),
     Building(fortress_core::Upgrade),
     Keep,
     Gate,

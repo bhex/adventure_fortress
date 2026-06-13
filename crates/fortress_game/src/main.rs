@@ -45,6 +45,10 @@ fn main() {
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
                     title: "Adventure Fortress".to_string(),
+                    // 1080p gives the auto-centered ASCII map ~320px side
+                    // gutters, where the roster/inspect panels live without
+                    // overlapping the fortress. Resizable for larger displays.
+                    resolution: (1920, 1080).into(),
                     ..Default::default()
                 }),
                 ..Default::default()

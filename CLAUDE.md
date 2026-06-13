@@ -5,46 +5,57 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-python main.py          # play (run from project root)
-pytest tests/ -v        # full test suite
-pytest tests/test_event_engine.py -v   # single test file
-pip install -r requirements.txt        # rich + pytest
+cargo run -p fortress_game        # play (opens a Bevy window)
+cargo test                        # full workspace test suite
+cargo test -p fortress_core       # core logic + content tests only
+cargo run -p fortress_core --example sim 42 150   # headless sim: seed, max days
+cargo clippy --workspace
 ```
 
-## Strategy constraint: Rust port
+Linux build needs Bevy's system libs: `pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev`.
 
-This Python codebase is a **prototype that will be ported to Rust**. All code must stay port-friendly:
+## Core conventions (port-friendly, deterministic)
 
-- `StrEnum` for every closed string set (`EffectKind`, `Role`, `Trait`, `Upgrade`) — never bare magic strings
-- **No reflection** — no `getattr`/`setattr`/`hasattr` dispatch, no `**data` unpacking into constructors; explicit `to_dict`/`from_dict` everywhere
-- **Game content is data**: events live in `content/events/*.json` and must remain engine-agnostic — the Rust port reuses these files verbatim
-- **Deterministic core**: all randomness goes through `GameState.rng` (a `random.Random` seeded by `run_seed`), never the global `random` module. RNG state is serialized in saves so restored runs continue identically
-- Pure logic (`src/core/`, `src/events/`) never imports UI; all I/O lives in `main.py` and `src/ui/display.py`
+- **Enums for every closed set** (`EffectKind`/`Effect`, `Role`, `Trait`, `Upgrade`, `ClassKind`, `Skill`) — never bare magic strings. Open, content-defined sets (event `tags`, story `flags`) are `String`, matching how the JSON authors them.
+- **No reflection** — explicit `to_dict`/`from_dict`-style (here: serde) everywhere; no dynamic dispatch by name.
+- **Game content is data**: events live in `content/events/*.json` and stay engine-agnostic. To add an event, edit JSON — never touch the engine. To add an effect type, add an `Effect` variant plus one arm in `engine::apply_effect`.
+- **Deterministic core**: all randomness goes through `GameState.rng` (a seeded `GameRng`), never thread-local rng. RNG state is serialized in saves so restored runs continue identically. UI-only randomness (e.g. event fire-hour) uses `rand::rng()` and never touches game state.
+- **Core never imports UI**: `crates/fortress_core` is pure logic; all rendering/I/O lives in `crates/fortress_game`.
 
 ## Architecture
 
-Game loop (in `main.py`): show status → `EventEngine.roll()` → player picks a choice → `EventEngine.resolve()` → `GameState.apply_daily_effects()` → `advance_day()` → auto-save. Defeat at morale 0; victory after day 30.
+Two crates in a Cargo workspace:
 
 ```
-GameState (src/core/game_state.py)      # owns rng, win/loss, daily tick, save/load
-  ├─ Fortress      # day, morale, defense, upgrades (Upgrade enum)
-  ├─ Resources     # food/gold/wood/stone, apply_delta/can_afford
-  └─ InhabitantManager  # Inhabitant list: Role + Trait enums, damage/morale helpers
+crates/fortress_core/         # pure, deterministic, fully tested
+  game_state.rs   # owns rng, daily tick, save/load, win/loss, SAVE_VERSION
+  fortress.rs     # day, morale, defense, buildings (Building{kind,level}), build costs
+  resources.rs    # food/valuables/wood/stone/gear/tools; numbers + adjective bands
+  inhabitants.rs  # Inhabitant list: Role + Trait enums, damage/heal/morale
+  player.rs       # PlayerCharacter (the commander) + ClassKind
+  skills.rs       # SkillSet: skills × tiers, xp-based growth
+  region.rs       # the darkness war: Sites, darkness 0-100, portal pressure, refugee waves
+  adventurers.rs  # heroes who arrive on renown/darkness
+  battle.rs       # fight_battle -> narrated BattleReport
+  engine.rs       # roll() (quiet-day gate + eligibility), resolve(), apply_effect, mitigate_damage
+  events.rs       # Event/Choice/Effect/StatCheck dataclasses + serde
+  content.rs      # JSON loader (globs content/events/*.json)
+  examples/sim.rs # headless bot for verification
 
-EventEngine (src/events/event_engine.py)
-  ├─ roll()     # filters events by day/morale/resources/role/upgrade; weighted pick; never repeats last event
-  └─ resolve()  # pays Choice.cost, then dispatches each Effect by EffectKind — no per-event logic
+crates/fortress_game/         # Bevy front-end (untested by design)
+  main.rs, ui.rs, map.rs, actors.rs, clock.rs, modal.rs, build.rs,
+  region_panel.rs, roster.rs, charcreate.rs, gameover.rs, picking.rs, bridge.rs
 ```
 
-**Events are pure data.** `src/events/event_pool.py` is just a JSON loader; `event_base.py` holds the dataclasses (`Event`, `Choice`, `Effect`, `EventResult`) and their `from_dict` parsers. To add an event, edit a JSON file in `content/events/` — never touch the engine. To add a new effect type, add an `EffectKind` member plus one branch in `EventEngine._apply_effect()`.
+Game loop: clock runs in real time → at dawn `engine::roll()` picks today's event (or a quiet day) → fires at a random hour as a modal (or auto-resolves if `event.auto`) → `resolve()` pays cost and dispatches effects → at midnight `apply_daily_effects()` runs the daily tick and `advance_day()` + autosave. Defeat at morale 0 **or** if the commander falls.
 
-**Damage mitigation** is tag-driven (`EventEngine._mitigate_damage`): `combat` events are softened by the Blacksmith upgrade and brave guards; `disaster` events are halved by the Infirmary.
-
-**Daily tick** (`GameState.apply_daily_effects`): Farm yields food, food upkeep (1 per 2 inhabitants), starvation morale penalty, inhabitant-morale cascade into fortress morale.
+- **Events are pure data**; `engine::eligible_events` gates by day/morale/resources/role/upgrade/darkness and **story flags** (`requires_flags`/`forbids_flags`); `Effect::SetFlag`/`ClearFlag` drive multi-step arcs.
+- **Damage mitigation** is tag-driven (`engine::mitigate_damage`): `combat` softened by Blacksmith/skill/gear/class; `disaster` halved by Infirmary; `demon` scaled up by darkness and softened by the Shrine.
+- **Daily tick**: building yields, food upkeep, starvation/sleep/morale cascades, skill training, region tick, refugee/hero arrivals.
 
 ## Conventions
 
-- Dataclasses for all models; type hints everywhere; `from __future__ import annotations`
-- All state mutation through model methods (`apply_morale_delta`, `damage`, `apply_delta`) — never raw attribute math in the engine
-- New core logic gets a pytest test; UI code is untested by design
-- `save.json` (project root) is the autosave — deleted on game end, gitignored
+- All state mutation through model methods (`apply_morale_delta`, `damage`, `apply_delta`, `add_building`) — never raw attribute math in the engine.
+- New core logic gets a test in `crates/fortress_core/tests/`; UI is untested by design.
+- Bump `SAVE_VERSION` (game_state.rs) whenever the save shape changes; `#[serde(default)]` for additive fields.
+- `save.json` (project root) is the autosave — deleted on game end, gitignored.

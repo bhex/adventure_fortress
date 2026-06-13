@@ -28,8 +28,9 @@ impl Plugin for ClockPlugin {
 pub const DAWN: f32 = 6.0;
 pub const DUSK_START: f32 = 19.0;
 pub const NIGHT_START: f32 = 21.0;
-/// Real seconds for one full game day at Normal speed.
-const DAY_SECONDS_NORMAL: f32 = 60.0;
+/// Real seconds for one full game day at Normal speed. Long enough that the
+/// dusk window gives wandering actors time to actually reach their beds.
+const DAY_SECONDS_NORMAL: f32 = 100.0;
 const FAST_MULTIPLIER: f32 = 3.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
