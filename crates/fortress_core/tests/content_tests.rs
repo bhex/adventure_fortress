@@ -33,6 +33,71 @@ fn auto_events_have_exactly_one_choice() {
 }
 
 #[test]
+fn flag_gates_are_reachable() {
+    use std::collections::HashSet;
+    let deck = deck();
+
+    // every flag any choice/branch can raise
+    let mut settable: HashSet<String> = HashSet::new();
+    let mut collect = |effects: &[Effect], set: &mut HashSet<String>| {
+        for e in effects {
+            if let Effect::SetFlag { flag } = e {
+                set.insert(flag.clone());
+            }
+        }
+    };
+    for ev in &deck {
+        for c in &ev.choices {
+            collect(&c.effects, &mut settable);
+            if let Some(sc) = &c.stat_check {
+                collect(&sc.success_effects, &mut settable);
+                collect(&sc.failure_effects, &mut settable);
+            }
+        }
+    }
+
+    // every flag a gate depends on must be raisable somewhere — no dead arcs
+    for ev in &deck {
+        for f in ev.requires_flags.iter().chain(ev.forbids_flags.iter()) {
+            assert!(
+                settable.contains(f),
+                "event {:?} gates on flag {:?} that no choice ever sets",
+                ev.name,
+                f
+            );
+        }
+    }
+}
+
+#[test]
+fn merchant_arc_plays_through() {
+    let deck = deck();
+    let find = |name: &str| deck.iter().find(|e| e.name == name).expect("arc event present").clone();
+
+    let mut gs = GameState::new(1);
+    gs.fortress.name = "T".to_string();
+    gs.resources.apply_delta(&ResourceDelta { valuables: 50, ..Default::default() });
+
+    // step 1: the plea is eligible up front; lending sets the debt flag
+    let plea = find("The Merchant's Plea");
+    assert!(eligible_events(std::slice::from_ref(&plea), 5, &gs, None).len() == 1);
+    resolve(&plea, 0, &mut gs); // choice 0 = "Lend him the coin"
+    assert!(gs.flags.contains("merchant_debt"));
+
+    // step 2: the payoff was NOT eligible before the flag, IS now (day 12+)
+    let returns = find("The Merchant Returns");
+    assert_eq!(eligible_events(std::slice::from_ref(&returns), 12, &gs, None).len(), 1);
+    let before = gs.resources.valuables;
+    resolve(&returns, 0, &mut gs);
+    assert!(gs.resources.valuables > before); // repaid with interest
+    assert!(gs.flags.contains("merchant_repaid") && !gs.flags.contains("merchant_debt"));
+
+    // step 3: with the debt closed, neither the plea nor the payoff recurs
+    assert!(eligible_events(std::slice::from_ref(&plea), 13, &gs, None).is_empty());
+    assert!(eligible_events(std::slice::from_ref(&returns), 13, &gs, None).is_empty());
+}
+
+#[test]
 fn every_content_choice_resolves() {
     for event in deck() {
         for idx in 0..event.choices.len() {

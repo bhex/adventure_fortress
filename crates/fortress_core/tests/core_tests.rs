@@ -833,6 +833,48 @@ fn a_catastrophic_battle_can_fell_the_commander() {
 }
 
 // ----------------------------------------------------------------------
+// story flags & event chains
+// ----------------------------------------------------------------------
+
+fn flagged_event(name: &str, requires: Vec<&str>, forbids: Vec<&str>) -> Event {
+    let mut e = make_event(vec![simple_choice(vec![])], vec![]);
+    e.name = name.to_string();
+    e.requires_flags = requires.into_iter().map(String::from).collect();
+    e.forbids_flags = forbids.into_iter().map(String::from).collect();
+    e
+}
+
+#[test]
+fn set_and_clear_flag_round_trip() {
+    let mut gs = test_state();
+    let setter = make_event(vec![simple_choice(vec![Effect::SetFlag { flag: "met_lord".into() }])], vec![]);
+    resolve(&setter, 0, &mut gs);
+    assert!(gs.flags.contains("met_lord"));
+    let clearer = make_event(vec![simple_choice(vec![Effect::ClearFlag { flag: "met_lord".into() }])], vec![]);
+    resolve(&clearer, 0, &mut gs);
+    assert!(!gs.flags.contains("met_lord"));
+}
+
+#[test]
+fn requires_flag_gates_eligibility() {
+    let mut gs = test_state();
+    let deck = vec![flagged_event("Callback", vec!["debt_owed"], vec![])];
+    // not eligible until the prerequisite flag is set
+    assert!(eligible_events(&deck, 5, &gs, None).is_empty());
+    gs.flags.insert("debt_owed".to_string());
+    assert_eq!(eligible_events(&deck, 5, &gs, None).len(), 1);
+}
+
+#[test]
+fn forbids_flag_retires_an_event() {
+    let mut gs = test_state();
+    let deck = vec![flagged_event("Intro", vec![], vec!["intro_done"])];
+    assert_eq!(eligible_events(&deck, 5, &gs, None).len(), 1);
+    gs.flags.insert("intro_done".to_string());
+    assert!(eligible_events(&deck, 5, &gs, None).is_empty());
+}
+
+// ----------------------------------------------------------------------
 // day cadence: quiet days
 // ----------------------------------------------------------------------
 

@@ -71,6 +71,23 @@
           {"kind": "apply_to_role", "params": {"role": "farmer", "health": -25, "morale": -5}},
           {"kind": "apply_to_role", "params": {"role": "healer", "health": 10, "morale": 8}}
         ]
+      },
+      {
+        "label": "Take personal charge of the sickbeds",
+        "description": "Lead the care yourself; your nerve sets the tone.",
+        "stat_check": {
+          "stat": "heart",
+          "difficulty": 8,
+          "success_effects": [
+            {"kind": "apply_to_role", "params": {"role": "farmer", "health": -8}},
+            {"kind": "morale", "params": {"amount": 5}}
+          ],
+          "failure_effects": [
+            {"kind": "apply_to_role", "params": {"role": "farmer", "health": -20, "morale": -5}},
+            {"kind": "morale", "params": {"amount": -4}}
+          ]
+        },
+        "effects": []
       }
     ]
   },

@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use fortress_core::{resolve, ChoiceAvailability};
+use fortress_core::{describe_effects, resolve, stat_check_odds, ChoiceAvailability};
 
 use crate::bridge::{ActiveEvent, Game, GameLog, LevelUpOffers};
 use crate::ui::{button_node, text, tint_buttons, Disabled, ACCENT, BTN_BG, PANEL_BG, TEXT_DIM};
@@ -29,7 +29,8 @@ struct ContinueButton;
 #[derive(Component)]
 struct ModalRoot;
 
-fn spawn_modal(mut commands: Commands, active: Res<ActiveEvent>) {
+fn spawn_modal(mut commands: Commands, active: Res<ActiveEvent>, game: Res<Game>) {
+    let player = game.0.player.as_ref();
     commands
         .spawn((
             ModalRoot,
@@ -100,6 +101,19 @@ fn spawn_modal(mut commands: Commands, active: Res<ActiveEvent>) {
                             button.insert(Disabled);
                         }
                         let label_color = if enabled { Color::WHITE } else { TEXT_DIM };
+
+                        // upfront effects + the gamble, if any
+                        let mut preview = describe_effects(&choice.effects);
+                        if let (Some(check), Some(p)) = (&choice.stat_check, player) {
+                            let odds = stat_check_odds(check, p);
+                            let gamble = format!("{} check — {} to succeed", check.stat.name(), odds);
+                            preview = if preview.is_empty() {
+                                gamble
+                            } else {
+                                format!("{preview}  ·  {gamble}")
+                            };
+                        }
+
                         button.with_children(|b| {
                             b.spawn(text(
                                 format!("{}. {}{}", idx + 1, choice.label, suffix),
@@ -108,6 +122,9 @@ fn spawn_modal(mut commands: Commands, active: Res<ActiveEvent>) {
                             ));
                             if !choice.description.is_empty() {
                                 b.spawn(text(choice.description.clone(), 13.0, TEXT_DIM));
+                            }
+                            if !preview.is_empty() {
+                                b.spawn(text(format!("→ {preview}"), 12.0, ACCENT));
                             }
                         });
                     }

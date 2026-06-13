@@ -1,5 +1,6 @@
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::path::Path;
 
 use crate::adventurers::{generate_adventurer, Adventurer, AdventurerClass};
@@ -13,7 +14,7 @@ use crate::resources::{ResourceDelta, Resources};
 use crate::rng::GameRng;
 use crate::skills::Skill;
 
-pub const SAVE_VERSION: u32 = 5;
+pub const SAVE_VERSION: u32 = 6;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 pub const LEVEL_UP_INTERVAL: u32 = 3;
@@ -53,6 +54,9 @@ pub struct GameState {
     /// spend it. Gates adventurer arrivals.
     pub reputation: i32,
     pub adventurers: Vec<Adventurer>,
+    /// Story flags raised by events, gating multi-step arcs (see `engine`).
+    #[serde(default)]
+    pub flags: HashSet<String>,
 }
 
 /// Most heroes a fortress can host at once.
@@ -76,6 +80,7 @@ impl GameState {
             region,
             reputation: 10,
             adventurers: Vec::new(),
+            flags: HashSet::new(),
         }
     }
 

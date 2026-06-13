@@ -14,7 +14,10 @@ pub mod skills;
 
 pub use adventurers::{generate_adventurer, Adventurer, AdventurerClass};
 pub use battle::{fight_battle, BattleReport};
-pub use engine::{choice_availability, eligible_events, resolve, roll, ChoiceAvailability};
+pub use engine::{
+    choice_availability, describe_effects, eligible_events, resolve, roll, stat_check_odds,
+    ChoiceAvailability,
+};
 pub use events::{Choice, Effect, Event, EventResult, StatCheck};
 pub use fortress::{
     level_numeral, BuildOutcome, Building, Fortress, Upgrade, HOUSING_PLOTS, MAX_BUILDING_LEVEL,

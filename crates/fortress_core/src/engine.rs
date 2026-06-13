@@ -29,6 +29,69 @@ pub enum ChoiceAvailability {
     StatLocked(StatKind, u8),
 }
 
+/// A plain-language preview of what a choice's effects will do, for the modal.
+/// Story-flag bookkeeping is hidden; resource changes stay in the soft style.
+pub fn describe_effects(effects: &[crate::events::Effect]) -> String {
+    use crate::events::Effect;
+    let mut parts: Vec<String> = Vec::new();
+    for e in effects {
+        let clause = match e {
+            Effect::Resource(d) => d.describe(),
+            Effect::Morale { amount } => signed("morale", *amount),
+            Effect::Defense { amount } => signed("defense", *amount),
+            Effect::ApplyToRole { role, health, morale } => {
+                let mut bits = Vec::new();
+                if *health != 0 {
+                    bits.push(signed("health", *health));
+                }
+                if *morale != 0 {
+                    bits.push(signed("morale", *morale));
+                }
+                format!("{}s: {}", role.name(), bits.join(", "))
+            }
+            Effect::Battle { power, .. } => format!("a battle (foe strength ~{power})"),
+            Effect::SpawnInhabitant { .. } => "a newcomer may join".to_string(),
+            Effect::KillInhabitant { .. } | Effect::RemoveInhabitant {} => {
+                "someone may be lost".to_string()
+            }
+            Effect::AddUpgrade { name } => format!("raise the {}", name.name()),
+            Effect::Region { .. } => "shifts the war beyond the walls".to_string(),
+            // story bookkeeping the player needn't see
+            Effect::SetFlag { .. } | Effect::ClearFlag { .. } => String::new(),
+        };
+        if !clause.is_empty() {
+            parts.push(clause);
+        }
+    }
+    parts.join(" · ")
+}
+
+fn signed(label: &str, amount: i32) -> String {
+    format!("{}{} {}", if amount >= 0 { "+" } else { "" }, amount, label)
+}
+
+/// Rough odds of passing a stat check, given the commander — for the modal.
+pub fn stat_check_odds(check: &crate::events::StatCheck, player: &PlayerCharacter) -> &'static str {
+    let stat = player.stats.get(check.stat) as i32;
+    let difficulty = if player.has_ability(PlayerAbility::SilverTongue) {
+        check.difficulty.saturating_sub(1)
+    } else {
+        check.difficulty
+    };
+    // success if stat + d6 >= difficulty, i.e. the die must land >= (difficulty - stat)
+    let need = difficulty - stat;
+    let favorable = (7 - need).clamp(0, 6);
+    match favorable {
+        6 => "certain",
+        5 => "very likely",
+        4 => "likely",
+        3 => "even",
+        2 => "unlikely",
+        1 => "remote",
+        _ => "hopeless",
+    }
+}
+
 pub fn eligible_events<'a>(
     deck: &'a [Event],
     day: u32,
@@ -46,6 +109,9 @@ pub fn eligible_events<'a>(
                 && e.requires_upgrade.is_none_or(|u| gs.fortress.has_upgrade(u))
                 && e.min_darkness.is_none_or(|d| gs.region.darkness >= d)
                 && e.max_darkness.is_none_or(|d| gs.region.darkness <= d)
+                // story flags: every required flag set, no forbidden flag set
+                && e.requires_flags.iter().all(|f| gs.flags.contains(f))
+                && !e.forbids_flags.iter().any(|f| gs.flags.contains(f))
                 && last_event_name != Some(e.name.as_str())
         })
         .collect()
@@ -384,6 +450,13 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
         Effect::Battle { power, loot_valuables } => {
             let report = crate::battle::fight_battle(*power, *loot_valuables, event, gs);
             result.lines.extend(report.lines);
+        }
+
+        Effect::SetFlag { flag } => {
+            gs.flags.insert(flag.clone());
+        }
+        Effect::ClearFlag { flag } => {
+            gs.flags.remove(flag);
         }
 
         Effect::Region { darkness, site_strength, pressure } => {

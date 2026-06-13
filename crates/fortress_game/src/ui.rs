@@ -19,10 +19,11 @@ impl Plugin for HudPlugin {
                 (
                     update_hud_text,
                     update_clock_text,
-                    update_log_text,
+                    update_log,
                     update_inspect,
                     speed_buttons,
                     build_hud_button,
+                    region_hud_button,
                 )
                     .run_if(in_state(AppState::FortressView)),
             );
@@ -88,7 +89,10 @@ pub struct Disabled;
 struct HudText;
 
 #[derive(Component)]
-struct LogText;
+struct LogPanel;
+
+#[derive(Component)]
+struct LogLine;
 
 #[derive(Component)]
 struct InspectText;
@@ -106,6 +110,9 @@ enum SpeedButton {
 
 #[derive(Component)]
 struct BuildHudButton;
+
+#[derive(Component)]
+struct RegionHudButton;
 
 fn spawn_hud(mut commands: Commands) {
     // top bar
@@ -149,6 +156,22 @@ fn spawn_hud(mut commands: Commands) {
                         .with_children(|b| {
                             b.spawn(text("build (B)", 14.0, Color::WHITE));
                         });
+                    cluster
+                        .spawn((
+                            RegionHudButton,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                                margin: UiRect::all(Val::Px(2.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..Default::default()
+                            },
+                            BackgroundColor(BTN_BG),
+                        ))
+                        .with_children(|b| {
+                            b.spawn(text("region (R)", 14.0, Color::WHITE));
+                        });
                     cluster.spawn((ClockText, text("", 16.0, ACCENT)));
                     for (which, label) in [
                         (SpeedButton::Pause, "||"),
@@ -176,24 +199,23 @@ fn spawn_hud(mut commands: Commands) {
                 });
         });
 
-    // log panel, bottom — to the right of the roster column
-    commands
-        .spawn((
-            DespawnOnExit(AppState::FortressView),
-            Node {
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(8.0),
-                left: Val::Px(246.0),
-                width: Val::Px(440.0),
-                padding: UiRect::all(Val::Px(8.0)),
-                flex_direction: FlexDirection::Column,
-                ..Default::default()
-            },
-            BackgroundColor(Color::srgb(0.05, 0.05, 0.08)),
-        ))
-        .with_children(|parent| {
-            parent.spawn((LogText, text("", 14.0, TEXT_DIM)));
-        });
+    // log panel, bottom — to the right of the roster column; lines are
+    // spawned per-entry so each can be colored by what kind of news it is.
+    commands.spawn((
+        LogPanel,
+        DespawnOnExit(AppState::FortressView),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(8.0),
+            left: Val::Px(246.0),
+            width: Val::Px(440.0),
+            padding: UiRect::all(Val::Px(8.0)),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(1.0),
+            ..Default::default()
+        },
+        BackgroundColor(Color::srgb(0.05, 0.05, 0.08)),
+    ));
 
     // inspect panel, right
     commands
@@ -218,16 +240,21 @@ fn spawn_hud(mut commands: Commands) {
 fn update_hud_text(game: Res<Game>, mut query: Query<&mut Text, With<HudText>>) {
     let Ok(mut t) = query.single_mut() else { return };
     let gs = &game.0;
+    // hybrid: exact number + band word, e.g. "food 34 (adequate)"
     let stores: Vec<String> = [
         fortress_core::ResourceKind::Food,
         fortress_core::ResourceKind::Wood,
         fortress_core::ResourceKind::Stone,
     ]
     .iter()
-    .map(|k| format!("{} {}", k.name(), gs.resources.band(*k).name()))
+    .map(|k| format!("{} {} ({})", k.name(), gs.resources.get(*k), gs.resources.band(*k).name()))
     .collect();
+    // a compact always-on darkness gauge so the war has a presence
+    let dark = gs.region.darkness.clamp(0, 100);
+    let filled = (dark / 10) as usize;
+    let gauge = format!("{}{}", "█".repeat(filled), "░".repeat(10 - filled));
     **t = format!(
-        "Day {} — {}  |  Morale {}  Def {}  |  Pop {}/{}  |  {}  |  Darkness: {}",
+        "Day {} — {}  |  Morale {}  Def {}  |  Pop {}/{}  |  {}  |  Dark {} {} ({})",
         gs.fortress.day,
         gs.fortress.name,
         gs.fortress.morale,
@@ -235,14 +262,50 @@ fn update_hud_text(game: Res<Game>, mut query: Query<&mut Text, With<HudText>>) 
         gs.inhabitants.count_alive(),
         gs.fortress.max_population,
         stores.join(" · "),
+        gauge,
+        dark,
         gs.region.band().name(),
     );
 }
 
-fn update_log_text(log: Res<GameLog>, mut query: Query<&mut Text, With<LogText>>) {
-    let Ok(mut t) = query.single_mut() else { return };
-    let lines: Vec<&str> = log.0.iter().rev().take(6).map(|s| s.as_str()).collect();
-    **t = lines.into_iter().rev().collect::<Vec<_>>().join("\n");
+/// The day's news, colored by what kind of news it is.
+fn log_line_color(line: &str) -> Color {
+    let l = line.to_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| l.contains(w));
+    if has(&["falls", "dies", "succumb", "slips away", "deserts", "go hungry", "buckles", "lost", "sleep rough"]) {
+        Color::srgb(0.9, 0.4, 0.4) // loss
+    } else if has(&["muster", "wound", "holds the breach", "breaks and scatters", "banner", "battle", "raid", "siege"]) {
+        Color::srgb(0.95, 0.65, 0.35) // battle
+    } else if has(&["darkness", "portal", "refugee", "the dark", "veil"]) {
+        Color::srgb(0.72, 0.55, 0.95) // the war beyond the walls
+    } else if has(&["harvest", "forge", "armory", "trade", "valuables", "timber", "wood", "stone", "tools", "stores", "tavern"]) {
+        Color::srgb(0.5, 0.82, 0.5) // economy
+    } else if has(&["quiet day"]) {
+        Color::srgb(0.45, 0.45, 0.5) // calm
+    } else {
+        TEXT_DIM
+    }
+}
+
+fn update_log(
+    mut commands: Commands,
+    log: Res<GameLog>,
+    panel: Query<Entity, With<LogPanel>>,
+    lines: Query<Entity, With<LogLine>>,
+) {
+    if !log.is_changed() {
+        return;
+    }
+    let Ok(panel) = panel.single() else { return };
+    for line in lines.iter() {
+        commands.entity(line).despawn();
+    }
+    let recent: Vec<&String> = log.0.iter().rev().take(8).collect();
+    commands.entity(panel).with_children(|p| {
+        for line in recent.into_iter().rev() {
+            p.spawn((LogLine, text(line.clone(), 13.0, log_line_color(line))));
+        }
+    });
 }
 
 fn upgrade_blurb(u: Upgrade) -> &'static str {
@@ -263,6 +326,42 @@ fn upgrade_blurb(u: Upgrade) -> &'static str {
         Upgrade::Shrine => "Shrine\nFaith against the dark. Softens\ndemon dread, more each tier.",
         Upgrade::TrainingYard => "Training Yard\nDrill and spar. Guards earn\nCombat practice every day.",
     }
+}
+
+/// One bar per skill (tier 0..=7), for the inspect panel.
+fn skill_bars(skills: &fortress_core::SkillSet) -> String {
+    fortress_core::Skill::ALL
+        .iter()
+        .map(|s| {
+            let tier = skills.tier(*s);
+            let idx = (tier.index() as usize).min(7);
+            let bar = format!("{}{}", "█".repeat(idx), "░".repeat(7 - idx));
+            format!("{:<9} {} {}", s.name(), bar, tier.name())
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Building inspect: current tier + effect blurb + next-tier cost preview.
+fn building_inspect(game: &Game, u: Upgrade) -> String {
+    let f = &game.0.fortress;
+    let level = f.building_level(u);
+    let mut s = if level == 0 {
+        format!("{}\n\n(not yet built)", upgrade_blurb(u))
+    } else if u == Upgrade::Housing {
+        format!("{}\n\nplots: {}/{}", upgrade_blurb(u), f.housing_units(), fortress_core::HOUSING_PLOTS)
+    } else {
+        format!("{}\n\nstanding: tier {}", upgrade_blurb(u), fortress_core::level_numeral(level))
+    };
+    match f.next_build_level(u) {
+        Some(next) => s.push_str(&format!(
+            "\n→ next: tier {} (costs {})",
+            fortress_core::level_numeral(next),
+            u.build_cost(next).describe_cost()
+        )),
+        None => s.push_str("\n→ at its height"),
+    }
+    s
 }
 
 fn update_inspect(
@@ -345,7 +444,7 @@ fn update_inspect(
             }
         ),
         Some(Selection::Gate) => "The Gate\nAll trouble arrives here first.".to_string(),
-        Some(Selection::Building(u)) => upgrade_blurb(*u).to_string(),
+        Some(Selection::Building(u)) => building_inspect(&game, *u),
         Some(Selection::Commander) => match &game.0.player {
             Some(p) => {
                 let abilities = if p.abilities.is_empty() {
@@ -353,18 +452,8 @@ fn update_inspect(
                 } else {
                     p.abilities.iter().map(|a| a.name()).collect::<Vec<_>>().join(", ")
                 };
-                let skills: Vec<String> = fortress_core::Skill::ALL
-                    .iter()
-                    .filter(|s| p.skills.tier(**s) > fortress_core::SkillTier::Dabbling)
-                    .map(|s| format!("{} {}", p.skills.tier(*s).name(), s.name()))
-                    .collect();
-                let skills = if skills.is_empty() {
-                    "nothing of note yet".to_string()
-                } else {
-                    skills.join(", ")
-                };
                 format!(
-                    "{} the {}  (Lv.{})\nCommander of the hold\nHealth {}  Morale {}\nMight {}  Wit {}  Heart {}\nAbilities: {}\nSkills: {}",
+                    "{} the {}  (Lv.{})\nCommander of the hold\nHealth {}  Morale {}\nMight {}  Wit {}  Heart {}\nAbilities: {}\n\n{}",
                     p.name,
                     p.class.name(),
                     p.level,
@@ -374,7 +463,7 @@ fn update_inspect(
                     p.stats.wit,
                     p.stats.heart,
                     abilities,
-                    skills,
+                    skill_bars(&p.skills),
                 )
             }
             None => String::new(),
@@ -387,16 +476,6 @@ fn update_inspect(
                     } else {
                         i.traits.iter().map(|t| t.name()).collect::<Vec<_>>().join(", ")
                     };
-                    let skills: Vec<String> = fortress_core::Skill::ALL
-                        .iter()
-                        .filter(|s| i.skills.tier(**s) > fortress_core::SkillTier::Dabbling)
-                        .map(|s| format!("{} {}", i.skills.tier(*s).name(), s.name()))
-                        .collect();
-                    let skills = if skills.is_empty() {
-                        "nothing of note yet".to_string()
-                    } else {
-                        skills.join(", ")
-                    };
                     let flavor = match i.role {
                         Role::Guard => "Keeps watch through the long nights.",
                         Role::Farmer => "Coaxes life from stubborn soil.",
@@ -404,13 +483,13 @@ fn update_inspect(
                         Role::Healer => "Mends what the world breaks.",
                     };
                     format!(
-                        "{}\n{}\nHealth {}  Morale {}\nTraits: {}\nSkills: {}\n\n{}",
+                        "{}\n{}\nHealth {}  Morale {}\nTraits: {}\n\n{}\n\n{}",
                         i.name,
                         i.role.name(),
                         i.health,
                         i.morale,
                         traits,
-                        skills,
+                        skill_bars(&i.skills),
                         flavor
                     )
                 }
@@ -446,6 +525,15 @@ fn build_hud_button(
 ) {
     if interactions.iter().any(|i| *i == Interaction::Pressed) {
         next_state.set(AppState::BuildMenu);
+    }
+}
+
+fn region_hud_button(
+    interactions: Query<&Interaction, (Changed<Interaction>, With<RegionHudButton>)>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    if interactions.iter().any(|i| *i == Interaction::Pressed) {
+        next_state.set(AppState::RegionView);
     }
 }
 

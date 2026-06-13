@@ -8,6 +8,7 @@ mod levelup;
 mod map;
 mod modal;
 mod picking;
+mod region_panel;
 mod roster;
 mod title;
 mod ui;
@@ -25,6 +26,7 @@ pub enum AppState {
     FortressView,
     EventModal,
     BuildMenu,
+    RegionView,
     LevelUp,
     GameOver,
 }
@@ -68,6 +70,7 @@ fn main() {
             clock::ClockPlugin,
             modal::ModalPlugin,
             build::BuildMenuPlugin,
+            region_panel::RegionPanelPlugin,
             levelup::LevelUpPlugin,
             gameover::GameOverPlugin,
         ))

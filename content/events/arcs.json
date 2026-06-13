@@ -1,0 +1,644 @@
+[
+  {
+    "name": "The Merchant's Plea",
+    "description": "A travelling merchant, robbed on the road, kneels at your gate. Lend him coin to restock, he swears, and he will repay it twice over.",
+    "tags": [
+      "economy",
+      "diplomacy"
+    ],
+    "min_day": 5,
+    "weight": 1.5,
+    "forbids_flags": [
+      "merchant_debt",
+      "merchant_repaid",
+      "merchant_fled"
+    ],
+    "choices": [
+      {
+        "label": "Lend him the coin",
+        "description": "A risk — but goodwill travels far.",
+        "cost": {
+          "valuables": 6
+        },
+        "effects": [
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "merchant_debt"
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": 2
+            }
+          }
+        ]
+      },
+      {
+        "label": "Turn him away",
+        "description": "The treasury is not a charity.",
+        "effects": [
+          {
+            "kind": "morale",
+            "params": {
+              "amount": -2
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Merchant Returns",
+    "description": "Months on, a fat caravan rolls up to the gate. The merchant you helped has not forgotten — and he has brought interest.",
+    "tags": [
+      "economy"
+    ],
+    "min_day": 12,
+    "weight": 1.2,
+    "requires_flags": [
+      "merchant_debt"
+    ],
+    "forbids_flags": [
+      "merchant_repaid",
+      "merchant_fled"
+    ],
+    "choices": [
+      {
+        "label": "Welcome him in",
+        "description": "Coin repaid, and a friend made.",
+        "effects": [
+          {
+            "kind": "resource",
+            "params": {
+              "valuables": 14
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": 5
+            }
+          },
+          {
+            "kind": "clear_flag",
+            "params": {
+              "flag": "merchant_debt"
+            }
+          },
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "merchant_repaid"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Vanished Merchant",
+    "description": "Word comes down the road: the merchant you bankrolled drank your coin away in a far city and will not return. You have been played.",
+    "tags": [
+      "economy"
+    ],
+    "min_day": 22,
+    "weight": 0.5,
+    "requires_flags": [
+      "merchant_debt"
+    ],
+    "forbids_flags": [
+      "merchant_repaid",
+      "merchant_fled"
+    ],
+    "choices": [
+      {
+        "label": "Swallow the loss",
+        "description": "A lesson bought, if not cheaply.",
+        "effects": [
+          {
+            "kind": "morale",
+            "params": {
+              "amount": -4
+            }
+          },
+          {
+            "kind": "clear_flag",
+            "params": {
+              "flag": "merchant_debt"
+            }
+          },
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "merchant_fled"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Whispers of Mutiny",
+    "description": "The steward reports muttering in the lower halls — talk of slipping away in the night, of a fortress not worth dying for.",
+    "tags": [
+      "inhabitants"
+    ],
+    "min_day": 8,
+    "weight": 1.5,
+    "forbids_flags": [
+      "cell_growing",
+      "cell_crushed"
+    ],
+    "choices": [
+      {
+        "label": "Root out the ringleaders",
+        "description": "Find them before the rot spreads.",
+        "stat_check": {
+          "stat": "wit",
+          "difficulty": 8,
+          "success_effects": [
+            {
+              "kind": "morale",
+              "params": {
+                "amount": 4
+              }
+            },
+            {
+              "kind": "set_flag",
+              "params": {
+                "flag": "cell_crushed"
+              }
+            }
+          ],
+          "failure_effects": [
+            {
+              "kind": "morale",
+              "params": {
+                "amount": -3
+              }
+            },
+            {
+              "kind": "set_flag",
+              "params": {
+                "flag": "cell_growing"
+              }
+            }
+          ]
+        },
+        "effects": []
+      },
+      {
+        "label": "Let it blow over",
+        "description": "Cracking down may only harden them.",
+        "effects": [
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "cell_growing"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Cell Strikes",
+    "description": "The malcontents make their move under cover of dark — a cut purse, an opened postern, and gone before the alarm.",
+    "tags": [
+      "inhabitants",
+      "disaster"
+    ],
+    "min_day": 14,
+    "weight": 1.1,
+    "requires_flags": [
+      "cell_growing"
+    ],
+    "choices": [
+      {
+        "label": "Bar the gate behind them",
+        "description": "Let the deserters go; save the rest.",
+        "effects": [
+          {
+            "kind": "remove_inhabitant",
+            "params": {}
+          },
+          {
+            "kind": "resource",
+            "params": {
+              "valuables": -4
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": -4
+            }
+          },
+          {
+            "kind": "clear_flag",
+            "params": {
+              "flag": "cell_growing"
+            }
+          }
+        ]
+      },
+      {
+        "label": "Ride them down",
+        "description": "Make an example. It will cost blood.",
+        "effects": [
+          {
+            "kind": "battle",
+            "params": {
+              "power": 9
+            }
+          },
+          {
+            "kind": "clear_flag",
+            "params": {
+              "flag": "cell_growing"
+            }
+          },
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "cell_crushed"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Hooded Figures",
+    "description": "Strangers in grey have taken to camping below the walls, chanting at the dark. The healers do not like the look of them.",
+    "tags": [
+      "demon"
+    ],
+    "min_darkness": 18,
+    "weight": 1.5,
+    "forbids_flags": [
+      "cult_rooted",
+      "cult_expelled"
+    ],
+    "choices": [
+      {
+        "label": "Drive them off",
+        "description": "Whatever they pray to, it is not welcome here.",
+        "effects": [
+          {
+            "kind": "morale",
+            "params": {
+              "amount": 2
+            }
+          },
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "cult_expelled"
+            }
+          }
+        ]
+      },
+      {
+        "label": "Leave them to their prayers",
+        "description": "They harm no one. Yet.",
+        "effects": [
+          {
+            "kind": "region",
+            "params": {
+              "darkness": 3
+            }
+          },
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "cult_rooted"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Cult's Ritual",
+    "description": "The grey-robes you tolerated have grown bold — a fire burns below the walls, and the air tastes of the portals. They are feeding the dark.",
+    "tags": [
+      "demon",
+      "combat"
+    ],
+    "min_darkness": 30,
+    "weight": 1.2,
+    "requires_flags": [
+      "cult_rooted"
+    ],
+    "choices": [
+      {
+        "label": "Storm the ritual",
+        "description": "End it with steel before it ends you.",
+        "stat_check": {
+          "stat": "might",
+          "difficulty": 9,
+          "success_effects": [
+            {
+              "kind": "region",
+              "params": {
+                "darkness": -8,
+                "pressure": -1
+              }
+            },
+            {
+              "kind": "morale",
+              "params": {
+                "amount": 6
+              }
+            },
+            {
+              "kind": "clear_flag",
+              "params": {
+                "flag": "cult_rooted"
+              }
+            },
+            {
+              "kind": "set_flag",
+              "params": {
+                "flag": "cult_expelled"
+              }
+            }
+          ],
+          "failure_effects": [
+            {
+              "kind": "region",
+              "params": {
+                "darkness": 8
+              }
+            },
+            {
+              "kind": "morale",
+              "params": {
+                "amount": -6
+              }
+            }
+          ]
+        },
+        "effects": [
+          {
+            "kind": "battle",
+            "params": {
+              "power": 12
+            }
+          }
+        ]
+      },
+      {
+        "label": "Seal the gates and pray",
+        "description": "Do not go out into that night.",
+        "effects": [
+          {
+            "kind": "region",
+            "params": {
+              "darkness": 6
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": -4
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Envoy of Lord Castis",
+    "description": "A silk-clad envoy delivers the compliments of Lord Castis, master of the eastern vales — and his expectation of an annual tribute.",
+    "tags": [
+      "diplomacy"
+    ],
+    "min_day": 7,
+    "weight": 1.5,
+    "forbids_flags": [
+      "castis_appeased",
+      "castis_angered"
+    ],
+    "choices": [
+      {
+        "label": "Pay the tribute",
+        "description": "Coin now buys quiet later.",
+        "cost": {
+          "valuables": 8
+        },
+        "effects": [
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "castis_appeased"
+            }
+          }
+        ]
+      },
+      {
+        "label": "Send the envoy back empty",
+        "description": "You bow to no eastern lordling.",
+        "effects": [
+          {
+            "kind": "morale",
+            "params": {
+              "amount": 4
+            }
+          },
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "castis_angered"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Castis Musters",
+    "description": "Lord Castis took your refusal poorly. His banners crest the eastern ridge — a punitive column come to teach the upstart fortress its place.",
+    "tags": [
+      "combat"
+    ],
+    "min_day": 15,
+    "weight": 1.1,
+    "requires_flags": [
+      "castis_angered"
+    ],
+    "choices": [
+      {
+        "label": "Throw them back",
+        "description": "Break his column and his pride with it.",
+        "effects": [
+          {
+            "kind": "battle",
+            "params": {
+              "power": 20,
+              "loot_valuables": 6
+            }
+          },
+          {
+            "kind": "clear_flag",
+            "params": {
+              "flag": "castis_angered"
+            }
+          }
+        ]
+      },
+      {
+        "label": "Sue for terms",
+        "description": "Buy him off before the first arrow flies.",
+        "cost": {
+          "valuables": 12
+        },
+        "effects": [
+          {
+            "kind": "morale",
+            "params": {
+              "amount": -3
+            }
+          },
+          {
+            "kind": "clear_flag",
+            "params": {
+              "flag": "castis_angered"
+            }
+          },
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "castis_appeased"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "A Gift from Lord Castis",
+    "description": "A wagon arrives under the eastern banner: good steel and a cask of wine, with Lord Castis's regards to a prudent neighbour.",
+    "tags": [
+      "diplomacy",
+      "economy"
+    ],
+    "min_day": 16,
+    "weight": 0.6,
+    "requires_flags": [
+      "castis_appeased"
+    ],
+    "forbids_flags": [
+      "castis_angered"
+    ],
+    "choices": [
+      {
+        "label": "Accept the gift",
+        "description": "Tribute, it seems, runs both ways.",
+        "effects": [
+          {
+            "kind": "resource",
+            "params": {
+              "gear": 5
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": 4
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Mother Yew Arrives",
+    "description": "A bent old woman with willow-bark beads asks for a night by the fire. The healers call her Mother Yew, and say she sees what is coming.",
+    "tags": [
+      "inhabitants"
+    ],
+    "min_day": 4,
+    "weight": 1.5,
+    "forbids_flags": [
+      "heeded_yew",
+      "spurned_yew"
+    ],
+    "choices": [
+      {
+        "label": "Heed her counsel",
+        "description": "Listen, and lay something by for the dark days.",
+        "cost": {
+          "food": 4
+        },
+        "effects": [
+          {
+            "kind": "morale",
+            "params": {
+              "amount": 3
+            }
+          },
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "heeded_yew"
+            }
+          }
+        ]
+      },
+      {
+        "label": "Send the crone away",
+        "description": "You have no time for omens.",
+        "effects": [
+          {
+            "kind": "morale",
+            "params": {
+              "amount": -2
+            }
+          },
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "spurned_yew"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Mother Yew's Warning Bears Out",
+    "description": "The chill she foretold creeps in from the hills. Because you listened, the stores are ready and the wards are set — the dark finds no easy purchase here.",
+    "tags": [
+      "demon"
+    ],
+    "min_darkness": 30,
+    "weight": 0.7,
+    "requires_flags": [
+      "heeded_yew"
+    ],
+    "choices": [
+      {
+        "label": "Hold to her wisdom",
+        "description": "Forewarned is half-armed.",
+        "effects": [
+          {
+            "kind": "region",
+            "params": {
+              "darkness": -6
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": 5
+            }
+          }
+        ]
+      }
+    ]
+  }
+]

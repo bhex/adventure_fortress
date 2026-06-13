@@ -37,6 +37,18 @@ pub struct Site {
     pub strength: i32,
 }
 
+impl Site {
+    /// How the site is faring, for at-a-glance UI — the number stays internal.
+    pub fn strength_band(&self) -> &'static str {
+        match self.strength {
+            10.. => "thriving",
+            6..=9 => "holding",
+            3..=5 => "failing",
+            _ => "besieged",
+        }
+    }
+}
+
 /// Adjective bands for the HUD — the number stays internal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DarknessBand {
@@ -130,6 +142,16 @@ impl Region {
 
     pub fn total_strength(&self) -> i32 {
         self.sites.iter().map(|s| s.strength).sum()
+    }
+
+    /// Free-world sites still standing against the dark.
+    pub fn standing_sites(&self) -> usize {
+        self.sites.len()
+    }
+
+    /// Whether survivors of fallen sites are still on the road to the gates.
+    pub fn refugees_incoming(&self) -> bool {
+        self.refugee_wave_days > 0
     }
 
     /// One day in the wider war. Returns log lines worth telling the player.

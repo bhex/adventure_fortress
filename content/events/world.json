@@ -1,0 +1,467 @@
+[
+  {
+    "name": "The Spring Thaw",
+    "description": "Meltwater turns the yard to mud, but the fields drink deep and the first green shows on the hills.",
+    "tags": ["economy"],
+    "min_day": 3,
+    "max_day": 20,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Sow early",
+        "description": "Gamble on the warm spell holding.",
+        "effects": [
+          {"kind": "resource", "params": {"food": 8}},
+          {"kind": "apply_to_role", "params": {"role": "farmer", "morale": 4}}
+        ]
+      },
+      {
+        "label": "Wait for firm ground",
+        "description": "Patience now, no lost seed later.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Midsummer Drought",
+    "description": "Weeks without rain. The well sinks low and the crops stand brittle in the heat.",
+    "tags": ["disaster"],
+    "min_day": 10,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Ration the water",
+        "description": "Thirsty work, but the crops survive.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -6}},
+          {"kind": "morale", "params": {"amount": -2}}
+        ]
+      },
+      {
+        "label": "Dig a deeper well",
+        "description": "Timber and sweat against the dry.",
+        "cost": {"wood": 6},
+        "effects": [
+          {"kind": "defense", "params": {"amount": 1}},
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Autumn Bounty",
+    "description": "The harvest comes in heavy and gold. Carts groan toward the granary.",
+    "tags": ["economy"],
+    "min_day": 8,
+    "requires_role": "farmer",
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Lay it all by",
+        "description": "Fill every store against the winter.",
+        "effects": [
+          {"kind": "resource", "params": {"food": 16}}
+        ]
+      },
+      {
+        "label": "Sell the surplus",
+        "description": "Trade fullness now for coin.",
+        "effects": [
+          {"kind": "resource", "params": {"food": 6, "valuables": 5}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Founding Day",
+    "description": "The anniversary of the first stone laid. The people look to you for a reason to celebrate.",
+    "tags": ["inhabitants"],
+    "min_day": 12,
+    "weight": 0.6,
+    "choices": [
+      {
+        "label": "Throw open the stores",
+        "description": "A feast they'll remember through the dark.",
+        "cost": {"food": 10},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 12}}
+        ]
+      },
+      {
+        "label": "A solemn remembrance",
+        "description": "Honor the fallen; spend nothing.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Salt Caravan",
+    "description": "A salt trader's wagons creak up the road. Salt keeps meat through the winter — and he knows it.",
+    "tags": ["economy"],
+    "min_day": 6,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Trade timber for salt",
+        "description": "Preserve the larder against lean months.",
+        "cost": {"wood": 6},
+        "effects": [
+          {"kind": "resource", "params": {"food": 14}}
+        ]
+      },
+      {
+        "label": "Trade stone for salt",
+        "description": "Stone you can spare; hunger you cannot.",
+        "cost": {"stone": 8},
+        "effects": [
+          {"kind": "resource", "params": {"food": 14}}
+        ]
+      },
+      {
+        "label": "Wave him on",
+        "description": "Your stores will hold.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "The Horse Fair",
+    "description": "Drovers bring a string of rough ponies past the gate, good for hauling and, at need, for cavalry.",
+    "tags": ["economy"],
+    "min_day": 9,
+    "weight": 0.6,
+    "choices": [
+      {
+        "label": "Buy a team",
+        "description": "Hooves now save backs later.",
+        "cost": {"valuables": 6},
+        "effects": [
+          {"kind": "resource", "params": {"wood": 8, "stone": 6}}
+        ]
+      },
+      {
+        "label": "Let them pass",
+        "description": "The coin is needed elsewhere.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "A Theft in the Stores",
+    "description": "A sack of grain and a coil of good rope have walked off in the night. The quartermaster wants names.",
+    "tags": ["inhabitants"],
+    "min_day": 5,
+    "weight": 0.8,
+    "choices": [
+      {
+        "label": "Hold a fair inquiry",
+        "description": "Justice seen is justice trusted.",
+        "stat_check": {
+          "stat": "wit",
+          "difficulty": 7,
+          "success_effects": [
+            {"kind": "resource", "params": {"food": 4}},
+            {"kind": "morale", "params": {"amount": 4}}
+          ],
+          "failure_effects": [
+            {"kind": "morale", "params": {"amount": -2}}
+          ]
+        },
+        "effects": []
+      },
+      {
+        "label": "Flog a likely suspect",
+        "description": "Quick, harsh, and maybe wrong.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -4}},
+          {"kind": "apply_to_role", "params": {"role": "farmer", "morale": -4}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Two Families Feud",
+    "description": "An old grudge between two households has come to blows in the yard. Both demand you take their side.",
+    "tags": ["diplomacy"],
+    "min_day": 7,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Mediate patiently",
+        "description": "Hear both, favor neither.",
+        "stat_check": {
+          "stat": "heart",
+          "difficulty": 8,
+          "success_effects": [
+            {"kind": "morale", "params": {"amount": 6}}
+          ],
+          "failure_effects": [
+            {"kind": "morale", "params": {"amount": -3}}
+          ]
+        },
+        "effects": []
+      },
+      {
+        "label": "Bang their heads together",
+        "description": "Quiet now, resentment later.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Lightning Storm",
+    "description": "A black squall walks across the hills, splitting the sky. Thatch smolders; the animals panic.",
+    "tags": ["disaster"],
+    "min_day": 4,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Man the firebreaks",
+        "description": "Wet hides and bucket lines.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -6}},
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      },
+      {
+        "label": "Shelter and wait",
+        "description": "Let it pass; count the cost after.",
+        "effects": [
+          {"kind": "resource", "params": {"food": -5, "wood": -4}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Brawl in the Tavern",
+    "description": "Ale and old grievances. The common room erupts, and a bench goes through a shutter.",
+    "tags": ["inhabitants"],
+    "min_day": 6,
+    "requires_upgrade": "Tavern",
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Wade in and break it up",
+        "description": "A few bruises, then peace.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "health": -4}},
+          {"kind": "morale", "params": {"amount": 3}}
+        ]
+      },
+      {
+        "label": "Let them tire themselves out",
+        "description": "Cheaper in blood, costlier in crockery.",
+        "effects": [
+          {"kind": "resource", "params": {"valuables": -2}},
+          {"kind": "morale", "params": {"amount": -1}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "A Clever Contraption",
+    "description": "The workshop tinkers unveil a geared contraption they swear will save a hundred hours of labor — if it doesn't take a finger first.",
+    "tags": ["economy"],
+    "min_day": 8,
+    "requires_upgrade": "Workshop",
+    "weight": 0.6,
+    "choices": [
+      {
+        "label": "Fund the build",
+        "description": "Back their ingenuity.",
+        "cost": {"wood": 5},
+        "effects": [
+          {"kind": "resource", "params": {"tools": 8}},
+          {"kind": "morale", "params": {"amount": 3}}
+        ]
+      },
+      {
+        "label": "Too risky",
+        "description": "Hands are worth more than gears.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "Sawpit Accident",
+    "description": "A log slips its chocks at the lumberyard. There's a cry, then a terrible quiet.",
+    "tags": ["disaster"],
+    "min_day": 7,
+    "requires_upgrade": "Lumberyard",
+    "weight": 0.6,
+    "choices": [
+      {
+        "label": "Rush the healers in",
+        "description": "Spare no effort to save the worker.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "farmer", "health": -12}},
+          {"kind": "apply_to_role", "params": {"role": "healer", "morale": 4}}
+        ]
+      },
+      {
+        "label": "Press on, shaken",
+        "description": "The wood must come in regardless.",
+        "effects": [
+          {"kind": "resource", "params": {"wood": 6}},
+          {"kind": "morale", "params": {"amount": -4}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "A Pilgrim's Blessing",
+    "description": "A pilgrim kneels long at your shrine and rises with tears, swearing the dark is thinner here than anywhere she has walked.",
+    "tags": ["inhabitants"],
+    "min_day": 9,
+    "requires_upgrade": "Shrine",
+    "weight": 0.6,
+    "choices": [
+      {
+        "label": "Send her on with bread",
+        "description": "Her words will travel further than her feet.",
+        "cost": {"food": 3},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 6}},
+          {"kind": "region", "params": {"darkness": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Tourney",
+    "description": "The training yard proposes a day of contests — blunted blades, archery butts, and bragging rights for a year.",
+    "tags": ["inhabitants"],
+    "min_day": 10,
+    "requires_upgrade": "TrainingYard",
+    "weight": 0.6,
+    "choices": [
+      {
+        "label": "Hold the tourney",
+        "description": "Sharpen pride and skill together.",
+        "cost": {"food": 4},
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "morale": 8}},
+          {"kind": "morale", "params": {"amount": 4}}
+        ]
+      },
+      {
+        "label": "No time for games",
+        "description": "The walls won't man themselves.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "morale": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Strangers on the Road",
+    "description": "A ragged family stands at the gate, fleeing some trouble they won't name. They ask only for work and walls.",
+    "tags": ["inhabitants"],
+    "min_day": 5,
+    "weight": 0.9,
+    "choices": [
+      {
+        "label": "Take them in",
+        "description": "Every hand counts when the dark comes.",
+        "effects": [
+          {"kind": "spawn_inhabitant", "params": {}},
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      },
+      {
+        "label": "Turn them out",
+        "description": "You cannot feed every sorrow.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Tax Man Cometh",
+    "description": "A clerk of some distant crown demands levies for a war you've never heard of, waving a seal you can't read.",
+    "tags": ["diplomacy"],
+    "min_day": 11,
+    "weight": 0.6,
+    "choices": [
+      {
+        "label": "Pay and be rid of him",
+        "description": "Coin is cheaper than soldiers at your gate.",
+        "cost": {"valuables": 5},
+        "effects": [
+          {"kind": "morale", "params": {"amount": -1}}
+        ]
+      },
+      {
+        "label": "Question his authority",
+        "description": "Out here, your word is the only law.",
+        "stat_check": {
+          "stat": "wit",
+          "difficulty": 8,
+          "success_effects": [
+            {"kind": "morale", "params": {"amount": 5}}
+          ],
+          "failure_effects": [
+            {"kind": "resource", "params": {"valuables": -5}},
+            {"kind": "morale", "params": {"amount": -2}}
+          ]
+        },
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "A Cold Snap",
+    "description": "Frost arrives weeks early and bites deep. Firewood burns twice as fast against it.",
+    "tags": ["disaster"],
+    "min_day": 12,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Burn the woodpile",
+        "description": "Warm halls, lighter stores.",
+        "cost": {"wood": 8},
+        "effects": [
+          {"kind": "morale", "params": {"amount": 3}}
+        ]
+      },
+      {
+        "label": "Bundle up and endure",
+        "description": "Save the wood; spend the spirit.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -4}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "A Vein of Iron",
+    "description": "Diggers shoring up the granary footings strike a seam of iron ore — raw wealth, if you can work it.",
+    "tags": ["economy"],
+    "min_day": 8,
+    "weight": 0.6,
+    "choices": [
+      {
+        "label": "Work the seam",
+        "description": "Hard labor, hard metal.",
+        "effects": [
+          {"kind": "resource", "params": {"gear": 4, "stone": 6}},
+          {"kind": "apply_to_role", "params": {"role": "blacksmith", "morale": 4}}
+        ]
+      },
+      {
+        "label": "Brick it over",
+        "description": "The footings matter more than ore.",
+        "effects": [
+          {"kind": "defense", "params": {"amount": 1}}
+        ]
+      }
+    ]
+  }
+]

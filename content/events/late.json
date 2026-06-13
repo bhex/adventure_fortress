@@ -103,6 +103,22 @@
         "effects": [
           {"kind": "morale", "params": {"amount": 5}}
         ]
+      },
+      {
+        "label": "Stand in the open and stare it down",
+        "description": "Let the people see their commander unafraid.",
+        "stat_check": {
+          "stat": "might",
+          "difficulty": 9,
+          "success_effects": [
+            {"kind": "morale", "params": {"amount": 12}},
+            {"kind": "defense", "params": {"amount": 2}}
+          ],
+          "failure_effects": [
+            {"kind": "morale", "params": {"amount": -8}}
+          ]
+        },
+        "effects": []
       }
     ]
   },
@@ -128,6 +144,22 @@
         "effects": [
           {"kind": "morale", "params": {"amount": 2}}
         ]
+      },
+      {
+        "label": "Win the crown with words",
+        "description": "Spend wit, not stores, on the king's favor.",
+        "stat_check": {
+          "stat": "wit",
+          "difficulty": 9,
+          "success_effects": [
+            {"kind": "morale", "params": {"amount": 6}},
+            {"kind": "defense", "params": {"amount": 3}}
+          ],
+          "failure_effects": [
+            {"kind": "morale", "params": {"amount": -3}}
+          ]
+        },
+        "effects": []
       }
     ]
   },

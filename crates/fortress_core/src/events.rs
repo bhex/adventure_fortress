@@ -36,6 +36,10 @@ pub enum Effect {
         #[serde(default)]
         loot_valuables: i64,
     },
+    /// Story memory: raise or lower a named flag the engine checks via an
+    /// event's `requires_flags`/`forbids_flags`. Drives multi-step arcs.
+    SetFlag { flag: String },
+    ClearFlag { flag: String },
     /// Push back (or feed) the regional darkness war: tweak darkness directly,
     /// bolster a random surviving site, or shift the portal pressure.
     Region {
@@ -101,6 +105,12 @@ pub struct Event {
     pub max_darkness: Option<i32>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Story gates: this event is eligible only when every `requires_flags`
+    /// flag is set and no `forbids_flags` flag is — the backbone of arcs.
+    #[serde(default)]
+    pub requires_flags: Vec<String>,
+    #[serde(default)]
+    pub forbids_flags: Vec<String>,
     #[serde(default = "default_weight")]
     pub weight: f64,
     /// Auto events resolve without asking the player — a single foregone
