@@ -35,6 +35,16 @@ fn spawn_screen(mut commands: Commands, game: Res<Game>) {
     let days = gs.fortress.day.saturating_sub(1);
     let epitaph = fall_epitaph(days);
 
+    // The realm can end two ways: the walls are overrun, or the commander
+    // falls and the people scatter without them.
+    let commander_fell = gs.commander_has_fallen();
+    let (headline, cause) = if commander_fell {
+        let name = gs.player.as_ref().map(|p| p.name.as_str()).unwrap_or("The commander");
+        ("THE COMMANDER HAS FALLEN", format!("{name} lies dead, and the fortress with them."))
+    } else {
+        ("THE FORTRESS HAS FALLEN", "Morale broke; the people fled into the dark.".to_string())
+    };
+
     let player_line = gs
         .player
         .as_ref()
@@ -57,10 +67,15 @@ fn spawn_screen(mut commands: Commands, game: Res<Game>) {
         })
         .unwrap_or_default();
 
-    let upgrades = if gs.fortress.upgrades.is_empty() {
+    let upgrades = if gs.fortress.buildings.is_empty() {
         "none".to_string()
     } else {
-        gs.fortress.upgrades.iter().map(|u| u.name()).collect::<Vec<_>>().join(", ")
+        gs.fortress
+            .buildings
+            .iter()
+            .map(|b| format!("{} {}", b.kind.name(), fortress_core::level_numeral(b.level)))
+            .collect::<Vec<_>>()
+            .join(", ")
     };
 
     let stats = format!(
@@ -99,7 +114,8 @@ fn spawn_screen(mut commands: Commands, game: Res<Game>) {
                     BackgroundColor(PANEL_BG),
                 ))
                 .with_children(|panel| {
-                    panel.spawn(text("THE FORTRESS HAS FALLEN", 22.0, Color::srgb(0.9, 0.25, 0.25)));
+                    panel.spawn(text(headline, 22.0, Color::srgb(0.9, 0.25, 0.25)));
+                    panel.spawn(text(cause, 15.0, Color::srgb(0.85, 0.55, 0.5)));
                     panel.spawn(text(epitaph, 16.0, Color::srgb(0.85, 0.75, 0.55)));
                     panel.spawn(text(stats, 14.0, Color::WHITE));
                     panel

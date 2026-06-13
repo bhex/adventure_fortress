@@ -1,5 +1,22 @@
 [
   {
+    "name": "Windfall in the Woods",
+    "description": "A storm-felled oak lies just outside the gate, dry and ready for splitting.",
+    "tags": ["flavor"],
+    "min_day": 6,
+    "weight": 0.5,
+    "auto": true,
+    "choices": [
+      {
+        "label": "Haul it in",
+        "description": "",
+        "effects": [
+          {"kind": "resource", "params": {"wood": 5}}
+        ]
+      }
+    ]
+  },
+  {
     "name": "Bandit Raid",
     "description": "Bandits strike at dawn, ladders against the walls and torches in hand.",
     "tags": ["combat"],
@@ -11,9 +28,7 @@
         "label": "Meet them on the walls",
         "description": "Blood for blood.",
         "effects": [
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -20}},
-          {"kind": "defense", "params": {"amount": -3}},
-          {"kind": "morale", "params": {"amount": 5}}
+          {"kind": "battle", "params": {"power": 18, "loot_valuables": 3}}
         ]
       },
       {
@@ -276,9 +291,7 @@
         "label": "Prepare an ambush",
         "description": "Turn their surprise against them.",
         "effects": [
-          {"kind": "resource", "params": {"valuables": 4}},
-          {"kind": "morale", "params": {"amount": 5}},
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -8}}
+          {"kind": "battle", "params": {"power": 8, "loot_valuables": 4}}
         ]
       },
       {
@@ -410,6 +423,125 @@
         "effects": [
           {"kind": "morale", "params": {"amount": 4}}
         ]
+      }
+    ]
+  },
+  {
+    "name": "Wandering Brewer",
+    "description": "A barrel-laden cart rolls through the gate. The brewer eyes your empty common room and offers to stay — for the price of a roof.",
+    "tags": ["opportunity"],
+    "min_day": 5,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Raise the Tavern",
+        "description": "A hearth, a hall, and song every night.",
+        "cost": {"wood": 12, "stone": 4},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Tavern"}},
+          {"kind": "morale", "params": {"amount": 5}}
+        ]
+      },
+      {
+        "label": "Send him on",
+        "description": "There are graver needs than ale.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Tinker's Bench",
+    "description": "A travelling tinker lays out files, lasts, and clamps. With a proper workshop, she says, your people could make their own tools.",
+    "tags": ["opportunity"],
+    "min_day": 6,
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Raise the Workshop",
+        "description": "Tools beget tools.",
+        "cost": {"wood": 14, "stone": 6},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Workshop"}}
+        ]
+      },
+      {
+        "label": "Not now",
+        "description": "The timber is needed elsewhere.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "The Old Grove",
+    "description": "Your foresters find a stand of straight, sound timber within a day's haul. Clear a yard for it and the wood will keep coming.",
+    "tags": ["opportunity"],
+    "min_day": 6,
+    "requires_role": "farmer",
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Raise the Lumberyard",
+        "description": "Steady timber, day after day.",
+        "cost": {"wood": 8, "stone": 6},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Lumberyard"}}
+        ]
+      },
+      {
+        "label": "Leave the grove be",
+        "description": "Some woods are best left standing.",
+        "effects": []
+      }
+    ]
+  },
+  {
+    "name": "A Sign in the Dark",
+    "description": "The healers report restless dreams and a chill that does not lift. They ask for a shrine — a place to set faith against whatever gathers beyond the walls.",
+    "tags": ["opportunity"],
+    "min_day": 8,
+    "requires_role": "healer",
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Raise the Shrine",
+        "description": "Faith is a wall the dark cannot climb.",
+        "cost": {"wood": 8, "stone": 12},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "Shrine"}},
+          {"kind": "morale", "params": {"amount": 4}}
+        ]
+      },
+      {
+        "label": "Dismiss the talk",
+        "description": "Dreams are only dreams.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Old Sergeant",
+    "description": "A grizzled veteran among the guard offers to drill the others if you'll clear a yard for it. Sweat now, he says, or blood later.",
+    "tags": ["opportunity"],
+    "min_day": 7,
+    "requires_role": "guard",
+    "weight": 0.7,
+    "choices": [
+      {
+        "label": "Raise the Training Yard",
+        "description": "Sharpen the guard, day by day.",
+        "cost": {"wood": 10, "stone": 8},
+        "effects": [
+          {"kind": "add_upgrade", "params": {"name": "TrainingYard"}}
+        ]
+      },
+      {
+        "label": "They drill enough",
+        "description": "Let the walls do the teaching.",
+        "effects": []
       }
     ]
   }

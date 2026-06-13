@@ -19,6 +19,20 @@ fn all_content_parses_with_enough_events() {
 }
 
 #[test]
+fn auto_events_have_exactly_one_choice() {
+    for e in deck() {
+        if e.auto {
+            assert_eq!(
+                e.choices.len(),
+                1,
+                "auto event {} must have exactly one (foregone) choice",
+                e.name
+            );
+        }
+    }
+}
+
+#[test]
 fn every_content_choice_resolves() {
     for event in deck() {
         for idx in 0..event.choices.len() {

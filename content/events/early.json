@@ -11,8 +11,7 @@
         "label": "Drive them off",
         "description": "Show strength now to deter worse later.",
         "effects": [
-          {"kind": "defense", "params": {"amount": -2}},
-          {"kind": "morale", "params": {"amount": 5}}
+          {"kind": "battle", "params": {"power": 6}}
         ]
       },
       {
@@ -121,9 +120,8 @@
         "label": "Hunt them down",
         "description": "End the threat, whatever it costs.",
         "effects": [
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -10}},
-          {"kind": "resource", "params": {"food": 8}},
-          {"kind": "morale", "params": {"amount": 3}}
+          {"kind": "battle", "params": {"power": 10, "loot_valuables": 0}},
+          {"kind": "resource", "params": {"food": 8}}
         ]
       },
       {
@@ -336,6 +334,74 @@
         "description": "It will hold. Probably.",
         "effects": [
           {"kind": "defense", "params": {"amount": -2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "A Fair Morning",
+    "description": "The sun comes up clean over the walls. For once, nothing is wrong.",
+    "tags": ["flavor"],
+    "min_day": 1,
+    "weight": 0.6,
+    "auto": true,
+    "choices": [
+      {
+        "label": "Enjoy it",
+        "description": "",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Foragers' Luck",
+    "description": "The foragers come back with full baskets — berries, roots, a brace of hare.",
+    "tags": ["flavor"],
+    "min_day": 1,
+    "weight": 0.6,
+    "auto": true,
+    "choices": [
+      {
+        "label": "Add it to the stores",
+        "description": "",
+        "effects": [
+          {"kind": "resource", "params": {"food": 4}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "A Peddler's Coin",
+    "description": "A peddler overpays for a night's shelter and is gone before dawn.",
+    "tags": ["flavor"],
+    "min_day": 2,
+    "weight": 0.5,
+    "auto": true,
+    "choices": [
+      {
+        "label": "Pocket it",
+        "description": "",
+        "effects": [
+          {"kind": "resource", "params": {"valuables": 2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Sudden Squall",
+    "description": "A hard rain finds every leak in every roof — a miserable, soaking day.",
+    "tags": ["flavor"],
+    "min_day": 2,
+    "weight": 0.5,
+    "auto": true,
+    "choices": [
+      {
+        "label": "Wait it out",
+        "description": "",
+        "effects": [
+          {"kind": "morale", "params": {"amount": -2}}
         ]
       }
     ]

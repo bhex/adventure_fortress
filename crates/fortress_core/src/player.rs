@@ -2,6 +2,7 @@ use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::rng::GameRng;
+use crate::skills::{Skill, SkillSet};
 
 // ---------------------------------------------------------------------------
 // Abilities
@@ -115,6 +116,15 @@ impl ClassKind {
             ClassKind::Mystic => StatKind::Heart,
         }
     }
+
+    /// The trade a commander hones by ruling: drilled daily like any worker.
+    pub fn home_skill(&self) -> Skill {
+        match self {
+            ClassKind::Warlord => Skill::Combat,
+            ClassKind::Steward => Skill::Crafting,
+            ClassKind::Mystic => Skill::Medicine,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -192,6 +202,22 @@ pub struct PlayerCharacter {
     pub stats: Stats,
     pub level: u32,
     pub abilities: Vec<PlayerAbility>,
+    // The commander lives by the same rules as everyone else: they can be
+    // wounded, lose heart, and fall — and the realm falls with them.
+    #[serde(default = "default_player_health")]
+    pub health: i32,
+    #[serde(default = "default_player_morale")]
+    pub morale: i32,
+    #[serde(default)]
+    pub skills: SkillSet,
+}
+
+fn default_player_health() -> i32 {
+    100
+}
+
+fn default_player_morale() -> i32 {
+    50
 }
 
 impl PlayerCharacter {
@@ -202,10 +228,31 @@ impl PlayerCharacter {
             stats,
             level: 1,
             abilities: Vec::new(),
+            health: default_player_health(),
+            morale: default_player_morale(),
+            skills: SkillSet::default(),
         }
     }
 
     pub fn has_ability(&self, ability: PlayerAbility) -> bool {
         self.abilities.contains(&ability)
+    }
+
+    pub fn is_alive(&self) -> bool {
+        self.health > 0
+    }
+
+    /// Mirrors `Inhabitant::damage` clamping — the commander has no traits,
+    /// so wounds land at face value.
+    pub fn damage(&mut self, amount: i32) {
+        self.health = (self.health - amount).max(0);
+    }
+
+    pub fn heal(&mut self, amount: i32) {
+        self.health = (self.health + amount).min(100);
+    }
+
+    pub fn apply_morale(&mut self, amount: i32) {
+        self.morale = (self.morale + amount).clamp(0, 100);
     }
 }

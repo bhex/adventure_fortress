@@ -41,6 +41,7 @@ impl GameLog {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Selection {
     Inhabitant(String),
+    Commander,
     Building(fortress_core::Upgrade),
     Keep,
     Gate,

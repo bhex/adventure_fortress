@@ -1,5 +1,23 @@
 [
   {
+    "name": "Imps in the Henhouse",
+    "description": "Something small and spiteful has been at the hens — feathers, and giggling in the dark.",
+    "tags": ["demon", "flavor"],
+    "max_darkness": 30,
+    "weight": 0.6,
+    "auto": true,
+    "choices": [
+      {
+        "label": "Curse and clean up",
+        "description": "",
+        "effects": [
+          {"kind": "resource", "params": {"food": -3}},
+          {"kind": "region", "params": {"darkness": 1}}
+        ]
+      }
+    ]
+  },
+  {
     "name": "Imp Scouts",
     "description": "Small winged shapes flit along the treeline at dusk, counting your walls.",
     "tags": ["demon", "combat"],
@@ -10,8 +28,7 @@
         "label": "Chase them off",
         "description": "Don't let them report back.",
         "effects": [
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -5}},
-          {"kind": "morale", "params": {"amount": 3}}
+          {"kind": "battle", "params": {"power": 5}}
         ]
       },
       {
@@ -60,9 +77,8 @@
         "label": "Send guards to collapse it",
         "description": "Steel and salt and old words.",
         "effects": [
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -10}},
-          {"kind": "region", "params": {"darkness": -5, "pressure": -1}},
-          {"kind": "morale", "params": {"amount": 5}}
+          {"kind": "battle", "params": {"power": 10}},
+          {"kind": "region", "params": {"darkness": -5, "pressure": -1}}
         ]
       },
       {
@@ -248,9 +264,7 @@
         "label": "Meet them with steel",
         "description": "The walls have held worse. Probably.",
         "effects": [
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -20}},
-          {"kind": "defense", "params": {"amount": -3}},
-          {"kind": "morale", "params": {"amount": 6}}
+          {"kind": "battle", "params": {"power": 22}}
         ]
       },
       {
@@ -373,7 +387,7 @@
           ]
         },
         "effects": [
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -25}}
+          {"kind": "battle", "params": {"power": 34}}
         ]
       },
       {

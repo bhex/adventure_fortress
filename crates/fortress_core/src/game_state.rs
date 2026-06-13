@@ -278,15 +278,7 @@ impl GameState {
             self.region.darkness = (self.region.darkness - veil_push).max(0);
         }
         if cleric_heal > 0 {
-            if let Some(patient) = self
-                .inhabitants
-                .inhabitants
-                .iter_mut()
-                .filter(|i| i.is_alive && i.health < 100)
-                .min_by_key(|i| i.health)
-            {
-                patient.heal(cleric_heal);
-                let name = patient.name.clone();
+            if let Some(name) = self.tend_most_wounded(cleric_heal) {
                 lines.push(format!("The cleric tends {name}. (+{cleric_heal} health)"));
             }
         }
@@ -331,6 +323,12 @@ impl GameState {
                 i.skills.train(Skill::Crafting, 1);
             }
         }
+        // The commander hones their own trade by ruling, like any worker.
+        if let Some(player) = &mut self.player {
+            if player.is_alive() {
+                player.skills.train(player.class.home_skill(), 2);
+            }
+        }
 
         // Craftwork: smiths forge gear at the smithy; everyone whittles tools.
         let smithy_level = self.fortress.building_level(Upgrade::Blacksmith);
@@ -361,7 +359,7 @@ impl GameState {
                 2 => 4,
                 _ => 6,
             }
-            / 4;
+            / 2;
         if whittled > 0 && self.resources.tools < 60 {
             self.resources.apply_delta(&ResourceDelta { tools: whittled, ..Default::default() });
         }
@@ -449,24 +447,18 @@ impl GameState {
         if healing > 0 {
             let patients = if infirmary_level >= 3 { 2 } else { 1 };
             for _ in 0..patients {
-                if let Some(patient) = self
-                    .inhabitants
-                    .inhabitants
-                    .iter_mut()
-                    .filter(|i| i.is_alive && i.health < 100)
-                    .min_by_key(|i| i.health)
-                {
-                    patient.heal(healing);
-                    let name = patient.name.clone();
+                if let Some(name) = self.tend_most_wounded(healing) {
                     lines.push(format!("The healers tend {name}. (+{healing} health)"));
                 }
             }
         }
 
-        // Food upkeep: 1 per 2 alive inhabitants; Iron Rations reduces it by 1
+        // Food upkeep: 1 per 2 mouths; the commander eats too. Iron Rations -1.
         let alive = self.inhabitants.count_alive() as i64;
-        if alive > 0 {
-            let base_upkeep = (alive + 1) / 2;
+        let commander = i64::from(self.player.is_some());
+        let mouths = alive + commander;
+        if mouths > 0 {
+            let base_upkeep = (mouths + 1) / 2;
             let discount = if self.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::IronRations)) {
                 1
             } else {
@@ -483,20 +475,22 @@ impl GameState {
         }
 
         // Sleep quality: enough beds lift spirits; the overflow sleeps rough.
-        // Bed assignment is deterministic: first-come keeps the beds.
-        if alive > 0 {
+        // The commander always takes the first Keep bed — it is their keep —
+        // so the rough nights fall on the inhabitants.
+        if mouths > 0 {
             let beds = self.fortress.sleeping_capacity() as i64;
-            if alive <= beds {
+            if mouths <= beds {
                 self.fortress.apply_morale_delta(1);
                 lines.push("Everyone sleeps warm tonight. (+1 morale)".to_string());
             } else {
-                let rough = alive - beds;
+                let beds_for_inhabitants = (beds - commander).max(0);
+                let rough = alive - beds_for_inhabitants;
                 for i in self
                     .inhabitants
                     .inhabitants
                     .iter_mut()
                     .filter(|i| i.is_alive)
-                    .skip(beds as usize)
+                    .skip(beds_for_inhabitants as usize)
                 {
                     i.apply_morale(-1);
                 }
@@ -529,12 +523,54 @@ impl GameState {
         lines
     }
 
+    /// Tend the single most-wounded soul (the commander included) by `amount`.
+    /// The commander is tended only when more hurt than any inhabitant.
+    /// Returns the name of whoever was healed, or None if all are hale.
+    fn tend_most_wounded(&mut self, amount: i32) -> Option<String> {
+        let worst_inhab = self
+            .inhabitants
+            .inhabitants
+            .iter()
+            .filter(|i| i.is_alive && i.health < 100)
+            .map(|i| i.health)
+            .min();
+        let cmd_health = self
+            .player
+            .as_ref()
+            .filter(|p| p.is_alive() && p.health < 100)
+            .map(|p| p.health);
+        let tend_commander = match (cmd_health, worst_inhab) {
+            (Some(c), Some(w)) => c < w,
+            (Some(_), None) => true,
+            _ => false,
+        };
+        if tend_commander {
+            let player = self.player.as_mut()?;
+            player.heal(amount);
+            Some(player.name.clone())
+        } else {
+            let patient = self
+                .inhabitants
+                .inhabitants
+                .iter_mut()
+                .filter(|i| i.is_alive && i.health < 100)
+                .min_by_key(|i| i.health)?;
+            patient.heal(amount);
+            Some(patient.name.clone())
+        }
+    }
+
     // ------------------------------------------------------------------
     // Win / loss — no victory condition, the fortress always eventually falls
     // ------------------------------------------------------------------
 
     pub fn is_game_over(&self) -> bool {
-        self.fortress.is_defeated()
+        self.fortress.is_defeated() || self.commander_has_fallen()
+    }
+
+    /// The realm falls with its commander: health at zero ends the run.
+    pub fn commander_has_fallen(&self) -> bool {
+        self.player.as_ref().is_some_and(|p| !p.is_alive())
     }
 
     // ------------------------------------------------------------------

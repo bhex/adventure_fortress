@@ -1,4 +1,5 @@
 pub mod adventurers;
+pub mod battle;
 pub mod content;
 pub mod engine;
 pub mod events;
@@ -12,6 +13,7 @@ pub mod rng;
 pub mod skills;
 
 pub use adventurers::{generate_adventurer, Adventurer, AdventurerClass};
+pub use battle::{fight_battle, BattleReport};
 pub use engine::{choice_availability, eligible_events, resolve, roll, ChoiceAvailability};
 pub use events::{Choice, Effect, Event, EventResult, StatCheck};
 pub use fortress::{

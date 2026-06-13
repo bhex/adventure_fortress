@@ -124,7 +124,7 @@ fn spawn_menu_ui(commands: &mut Commands, gs: &GameState) {
                         }
                         let label_color = if enabled { Color::WHITE } else { TEXT_DIM };
                         button.with_children(|b| {
-                            b.spawn(text(format!("{}{}", upgrade.name(), suffix), 16.0, label_color));
+                            b.spawn(text(format!("{}{}{}", upgrade.name(), standing, suffix), 16.0, label_color));
                         });
                     }
 

@@ -6,7 +6,7 @@
 use bevy::prelude::*;
 use rand::Rng;
 
-use fortress_core::roll;
+use fortress_core::{resolve, roll};
 
 use crate::bridge::{finish_day, ActiveEvent, EngineCtl, EventDeck, Game, GameLog};
 use crate::AppState;
@@ -87,6 +87,20 @@ impl GameClock {
         }
     }
 
+    /// How fast the wandering actors should move, tracking clock speed so the
+    /// fortress looks busier when time runs faster. Skip-to-dawn is capped so
+    /// the crowd stays readable rather than blinking across the map.
+    pub fn actor_speed_mult(&self) -> f32 {
+        if self.skipping {
+            return 4.0;
+        }
+        match self.speed {
+            ClockSpeed::Paused => 0.0,
+            ClockSpeed::Normal => 1.0,
+            ClockSpeed::Fast => FAST_MULTIPLIER,
+        }
+    }
+
     pub fn readout(&self) -> String {
         let h = self.hour as u32;
         let m = ((self.hour - h as f32) * 60.0) as u32;
@@ -158,14 +172,23 @@ fn tick_clock(
         if clock.hour >= fire_at {
             clock.event_hour = None;
             if let Some(event) = ctl.pending_event.take() {
-                let availability = event
-                    .choices
-                    .iter()
-                    .map(|c| fortress_core::choice_availability(c, &event, &game.0))
-                    .collect();
-                commands.insert_resource(ActiveEvent { event, availability });
-                next_state.set(AppState::EventModal);
-                return;
+                // Auto events need no decision: resolve the lone choice straight
+                // to the log and let the day run on, no modal.
+                if event.auto {
+                    let result = resolve(&event, 0, &mut game.0);
+                    for line in result.lines {
+                        log.push(format!("Day {}: {}", game.0.fortress.day, line));
+                    }
+                } else {
+                    let availability = event
+                        .choices
+                        .iter()
+                        .map(|c| fortress_core::choice_availability(c, &event, &game.0))
+                        .collect();
+                    commands.insert_resource(ActiveEvent { event, availability });
+                    next_state.set(AppState::EventModal);
+                    return;
+                }
             }
         }
     }

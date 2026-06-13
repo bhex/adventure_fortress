@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use bevy_ascii_terminal::*;
 
-use crate::actors::{Actor, GridPos};
+use crate::actors::{Actor, ActorKind, GridPos};
 use crate::bridge::{Selected, Selection};
 use crate::map::{MapLayout, TileKind};
 use crate::AppState;
@@ -60,7 +60,10 @@ fn click_select(
 
     // priority: actor > building > keep/gate > ground (clears)
     if let Some((actor, _)) = actors.iter().find(|(_, p)| p.0 == tile) {
-        selected.0 = Some(Selection::Inhabitant(actor.name.clone()));
+        selected.0 = Some(match actor.kind {
+            ActorKind::Commander => Selection::Commander,
+            ActorKind::Inhabitant(_) => Selection::Inhabitant(actor.name.clone()),
+        });
         return;
     }
     selected.0 = match layout.tiles.get(&tile) {

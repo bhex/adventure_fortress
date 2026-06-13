@@ -252,11 +252,16 @@ fn upgrade_blurb(u: Upgrade) -> &'static str {
         Upgrade::Infirmary => "Infirmary\nDisasters strike half as hard.\nHealers recover spirit daily.",
         Upgrade::Blacksmith => "Blacksmith\nYour people take less harm in battle.",
         Upgrade::Granary => "Granary\nSafer stores. Trade caravans now\nseek out the fortress.",
-        Upgrade::Barracks => "Barracks\n+5 max population, +2 defense.",
-        Upgrade::Inn => "Inn\n+5 max population, +5 beds.\nLaughter lifts morale every day.",
+        Upgrade::Barracks => "Barracks\n+max population & defense.\nMore bunks for guards each tier.",
+        Upgrade::Housing => "Housing\n+5 max population, +5 beds per plot.\nUp to four plots line the gate road.",
         Upgrade::AdventurersGuild => {
             "Adventurers' Guild\nWord spreads. Heroes will seek\nout a fortress of renown."
         }
+        Upgrade::Tavern => "Tavern\nDrink and song. Lifts morale\nmore with every tier.",
+        Upgrade::Workshop => "Workshop\nTools and tinkering. Trains\nCrafting once raised to II.",
+        Upgrade::Lumberyard => "Lumberyard\nFelled timber stacked high —\nwood every day, more each tier.",
+        Upgrade::Shrine => "Shrine\nFaith against the dark. Softens\ndemon dread, more each tier.",
+        Upgrade::TrainingYard => "Training Yard\nDrill and spar. Guards earn\nCombat practice every day.",
     }
 }
 
@@ -325,20 +330,55 @@ fn update_inspect(
         Some(Selection::Keep) => format!(
             "The Keep\nSeat of {}.\nUpgrades built: {}",
             game.0.fortress.name,
-            if game.0.fortress.upgrades.is_empty() {
+            if game.0.fortress.buildings.is_empty() {
                 "none".to_string()
             } else {
                 game.0
                     .fortress
-                    .upgrades
+                    .buildings
                     .iter()
-                    .map(|u| u.name())
+                    .map(|b| {
+                        format!("{} {}", b.kind.name(), fortress_core::level_numeral(b.level))
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             }
         ),
         Some(Selection::Gate) => "The Gate\nAll trouble arrives here first.".to_string(),
         Some(Selection::Building(u)) => upgrade_blurb(*u).to_string(),
+        Some(Selection::Commander) => match &game.0.player {
+            Some(p) => {
+                let abilities = if p.abilities.is_empty() {
+                    "none yet".to_string()
+                } else {
+                    p.abilities.iter().map(|a| a.name()).collect::<Vec<_>>().join(", ")
+                };
+                let skills: Vec<String> = fortress_core::Skill::ALL
+                    .iter()
+                    .filter(|s| p.skills.tier(**s) > fortress_core::SkillTier::Dabbling)
+                    .map(|s| format!("{} {}", p.skills.tier(*s).name(), s.name()))
+                    .collect();
+                let skills = if skills.is_empty() {
+                    "nothing of note yet".to_string()
+                } else {
+                    skills.join(", ")
+                };
+                format!(
+                    "{} the {}  (Lv.{})\nCommander of the hold\nHealth {}  Morale {}\nMight {}  Wit {}  Heart {}\nAbilities: {}\nSkills: {}",
+                    p.name,
+                    p.class.name(),
+                    p.level,
+                    p.health,
+                    p.morale,
+                    p.stats.might,
+                    p.stats.wit,
+                    p.stats.heart,
+                    abilities,
+                    skills,
+                )
+            }
+            None => String::new(),
+        },
         Some(Selection::Inhabitant(name)) => {
             match game.0.inhabitants.inhabitants.iter().find(|i| &i.name == name) {
                 Some(i) => {

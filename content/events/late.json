@@ -10,18 +10,14 @@
         "label": "Hold the walls",
         "description": "This is what the walls are for.",
         "effects": [
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -25}},
-          {"kind": "defense", "params": {"amount": -5}},
-          {"kind": "morale", "params": {"amount": 8}}
+          {"kind": "battle", "params": {"power": 24, "loot_valuables": 4}}
         ]
       },
       {
         "label": "Sally out at dawn",
         "description": "Strike first, before they dig in.",
         "effects": [
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -35}},
-          {"kind": "resource", "params": {"valuables": 6}},
-          {"kind": "morale", "params": {"amount": 12}}
+          {"kind": "battle", "params": {"power": 30, "loot_valuables": 8}}
         ]
       },
       {
@@ -146,10 +142,7 @@
         "label": "Fight to the last",
         "description": "Stone and blood and stubbornness.",
         "effects": [
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -30}},
-          {"kind": "apply_to_role", "params": {"role": "farmer", "health": -15}},
-          {"kind": "defense", "params": {"amount": -6}},
-          {"kind": "morale", "params": {"amount": 15}}
+          {"kind": "battle", "params": {"power": 32, "loot_valuables": 6}}
         ]
       },
       {
@@ -157,8 +150,7 @@
         "description": "Give them the yard; keep the heart.",
         "effects": [
           {"kind": "resource", "params": {"food": -15, "wood": -10}},
-          {"kind": "apply_to_role", "params": {"role": "guard", "health": -15}},
-          {"kind": "morale", "params": {"amount": 5}}
+          {"kind": "battle", "params": {"power": 18}}
         ]
       }
     ]

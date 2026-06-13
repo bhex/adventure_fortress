@@ -25,48 +25,137 @@ impl Plugin for RosterPlugin {
 const ROW_BG: Color = Color::srgba(0.0, 0.0, 0.0, 0.0);
 const ROW_BG_HOVER: Color = Color::srgb(0.22, 0.25, 0.33);
 const ROW_BG_SELECTED: Color = Color::srgb(0.16, 0.28, 0.2);
+const HERO_COLOR: Color = Color::srgb(0.7, 0.4, 0.9);
 
 #[derive(Component)]
 struct RosterRoot;
 
+/// What clicking a row selects (heroes and the header select nothing).
+#[derive(Clone, PartialEq, Eq)]
+enum RowTarget {
+    None,
+    Commander,
+    Inhabitant(String),
+}
+
 #[derive(Component, Clone)]
 struct RosterRow {
-    name: String,
+    target: RowTarget,
 }
 
 /// Snapshot of what the panel currently shows; rows rebuild only when it changes.
 #[derive(Resource, Default, PartialEq, Eq)]
-struct RosterCache(Vec<RosterEntry>);
+struct RosterCache(RosterSnap);
+
+#[derive(Default, PartialEq, Eq, Clone)]
+struct RosterSnap {
+    summary: String,
+    rows: Vec<RosterEntry>,
+}
+
+#[derive(PartialEq, Eq, Clone)]
+enum RowKind {
+    Commander,
+    Hero,
+    Inhabitant(fortress_core::Role),
+}
 
 #[derive(PartialEq, Eq, Clone)]
 struct RosterEntry {
+    kind: RowKind,
+    glyph: char,
     name: String,
-    role: fortress_core::Role,
-    health: i32,
-    morale: i32,
-    signature: String,
+    detail: String,
 }
 
-fn snapshot(game: &Game) -> Vec<RosterEntry> {
-    game.0
-        .inhabitants
-        .get_alive()
-        .iter()
-        .map(|i| {
-            let (tier, skill) = i.skills.signature();
-            RosterEntry {
-                name: i.name.clone(),
-                role: i.role,
-                health: i.health,
-                morale: i.morale,
-                signature: format!("{} {}", tier.name(), skill.practitioner()),
-            }
-        })
-        .collect()
+impl RosterEntry {
+    fn color(&self) -> Color {
+        match &self.kind {
+            RowKind::Commander => crate::ui::ACCENT,
+            RowKind::Hero => HERO_COLOR,
+            RowKind::Inhabitant(role) => role_glyph(*role).1,
+        }
+    }
+
+    fn target(&self) -> RowTarget {
+        match &self.kind {
+            RowKind::Commander => RowTarget::Commander,
+            RowKind::Hero => RowTarget::None,
+            RowKind::Inhabitant(_) => RowTarget::Inhabitant(self.name.clone()),
+        }
+    }
+}
+
+fn snapshot(game: &Game) -> RosterSnap {
+    let gs = &game.0;
+    let mut rows = Vec::new();
+
+    // commander pinned at the top
+    if let Some(p) = gs.player.as_ref().filter(|p| p.is_alive()) {
+        rows.push(RosterEntry {
+            kind: RowKind::Commander,
+            glyph: '@',
+            name: format!("{} the {}", p.name, p.class.name()),
+            detail: format!("commander · hp {} · mo {}", p.health, p.morale),
+        });
+    }
+
+    // resident heroes next
+    for a in &gs.adventurers {
+        rows.push(RosterEntry {
+            kind: RowKind::Hero,
+            glyph: '&',
+            name: format!("{} the {}", a.name, a.class.name()),
+            detail: format!("{} {}", a.perk_tier().name(), a.class.home_skill().practitioner()),
+        });
+    }
+
+    // then the inhabitants, with traits inline
+    let alive = gs.inhabitants.get_alive();
+    let mut role_counts = [0usize; 4];
+    for i in &alive {
+        role_counts[i.role as usize] += 1;
+        let (tier, skill) = i.skills.signature();
+        let traits = if i.traits.is_empty() {
+            String::new()
+        } else {
+            format!(" · {}", i.traits.iter().map(|t| t.name()).collect::<Vec<_>>().join(", "))
+        };
+        rows.push(RosterEntry {
+            kind: RowKind::Inhabitant(i.role),
+            glyph: role_glyph(i.role).0,
+            name: i.name.clone(),
+            detail: format!(
+                "{} {} · hp {} · mo {}{}",
+                tier.name(),
+                skill.practitioner(),
+                i.health,
+                i.morale,
+                traits
+            ),
+        });
+    }
+
+    // header: who lives in the fortress, at a glance
+    let commander = usize::from(gs.player.as_ref().is_some_and(|p| p.is_alive()));
+    let souls = alive.len() + commander;
+    let mut parts = Vec::new();
+    for role in fortress_core::Role::ALL {
+        let n = role_counts[role as usize];
+        if n > 0 {
+            parts.push(format!("{n} {}s", role.name().to_lowercase()));
+        }
+    }
+    let mut summary = format!("{souls} souls — {}", parts.join(" · "));
+    if !gs.adventurers.is_empty() {
+        summary.push_str(&format!(" | {} heroes", gs.adventurers.len()));
+    }
+
+    RosterSnap { summary, rows }
 }
 
 fn spawn_panel(mut commands: Commands, mut cache: ResMut<RosterCache>) {
-    cache.0.clear(); // force refresh_rows to rebuild on entry
+    cache.0 = RosterSnap::default(); // force refresh_rows to rebuild on entry
     commands.spawn((
         RosterRoot,
         DespawnOnExit(AppState::FortressView),
@@ -105,12 +194,15 @@ fn refresh_rows(
     }
 
     commands.entity(root).with_children(|panel| {
-        panel.spawn((RosterRow { name: String::new() }, text("THE PEOPLE", 13.0, TEXT_DIM)));
-        for entry in &current {
-            let (glyph, color) = role_glyph(entry.role);
+        // header: a one-line census of who lives here
+        panel.spawn((RosterRow { target: RowTarget::None }, text("WHO LIVES HERE", 13.0, TEXT_DIM)));
+        panel.spawn((RosterRow { target: RowTarget::None }, text(&*current.summary, 11.0, TEXT_DIM)));
+
+        for entry in &current.rows {
+            let color = entry.color();
             panel
                 .spawn((
-                    RosterRow { name: entry.name.clone() },
+                    RosterRow { target: entry.target() },
                     Button,
                     Node {
                         width: Val::Percent(100.0),
@@ -122,18 +214,14 @@ fn refresh_rows(
                     BackgroundColor(ROW_BG),
                 ))
                 .with_children(|row| {
-                    row.spawn(text(glyph.to_string(), 15.0, color));
+                    row.spawn(text(entry.glyph.to_string(), 15.0, color));
                     row.spawn(Node {
                         flex_direction: FlexDirection::Column,
                         ..Default::default()
                     })
                     .with_children(|col| {
                         col.spawn(text(&*entry.name, 14.0, Color::WHITE));
-                        col.spawn(text(
-                            format!("{}  hp {}  mo {}", entry.signature, entry.health, entry.morale),
-                            11.0,
-                            TEXT_DIM,
-                        ));
+                        col.spawn(text(&*entry.detail, 11.0, TEXT_DIM));
                     });
                 });
         }
@@ -145,8 +233,15 @@ fn row_click(
     mut selected: ResMut<Selected>,
 ) {
     for (interaction, row) in interactions.iter() {
-        if *interaction == Interaction::Pressed && !row.name.is_empty() {
-            selected.0 = Some(Selection::Inhabitant(row.name.clone()));
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        match &row.target {
+            RowTarget::Commander => selected.0 = Some(Selection::Commander),
+            RowTarget::Inhabitant(name) => {
+                selected.0 = Some(Selection::Inhabitant(name.clone()))
+            }
+            RowTarget::None => {}
         }
     }
 }
@@ -158,8 +253,11 @@ fn highlight_selected_row(
     mut rows: Query<(&Interaction, &RosterRow, &mut BackgroundColor), With<Button>>,
 ) {
     for (interaction, row, mut bg) in rows.iter_mut() {
-        let is_selected =
-            matches!(&selected.0, Some(Selection::Inhabitant(n)) if n == &row.name);
+        let is_selected = match (&selected.0, &row.target) {
+            (Some(Selection::Commander), RowTarget::Commander) => true,
+            (Some(Selection::Inhabitant(n)), RowTarget::Inhabitant(m)) => n == m,
+            _ => false,
+        };
         *bg = if is_selected {
             ROW_BG_SELECTED.into()
         } else if *interaction == Interaction::Hovered {

@@ -82,9 +82,9 @@ fn defense_never_negative() {
 #[test]
 fn upgrades_no_duplicates() {
     let mut f = Fortress::new("T");
-    f.add_upgrade(Upgrade::Farm);
-    f.add_upgrade(Upgrade::Farm);
-    assert_eq!(f.upgrades.len(), 1);
+    f.add_building(Upgrade::Farm);
+    f.add_building(Upgrade::Farm);
+    assert_eq!(f.buildings.len(), 1);
 }
 
 // ----------------------------------------------------------------------
@@ -256,7 +256,7 @@ fn choice_cost_is_paid() {
 #[test]
 fn blacksmith_mitigates_combat_damage() {
     let mut gs = test_state();
-    gs.fortress.add_upgrade(Upgrade::Blacksmith);
+    gs.fortress.add_building(Upgrade::Blacksmith);
     gs.inhabitants.add(guard("G"));
     resolve_single(
         &mut gs,
@@ -270,7 +270,7 @@ fn blacksmith_mitigates_combat_damage() {
 #[test]
 fn infirmary_halves_disaster_damage() {
     let mut gs = test_state();
-    gs.fortress.add_upgrade(Upgrade::Infirmary);
+    gs.fortress.add_building(Upgrade::Infirmary);
     gs.inhabitants.add(Inhabitant::new("F", Role::Farmer));
     resolve_single(
         &mut gs,
@@ -284,7 +284,7 @@ fn infirmary_halves_disaster_damage() {
 fn mitigation_python_parity_on_odd_values() {
     // Python: -(-(-15) * 3 // 4) = -11; -(-(-15) // 2) = -7 (floor == trunc for positives)
     let mut gs = test_state();
-    gs.fortress.add_upgrade(Upgrade::Blacksmith);
+    gs.fortress.add_building(Upgrade::Blacksmith);
     gs.inhabitants.add(guard("G"));
     resolve_single(
         &mut gs,
@@ -301,9 +301,10 @@ fn mitigation_python_parity_on_odd_values() {
 #[test]
 fn daily_farm_yield() {
     let mut gs = test_state();
-    gs.fortress.add_upgrade(Upgrade::Farm);
+    gs.resources.food = 30; // below the 50 granary-less cap, so nothing spoils
+    gs.fortress.add_building(Upgrade::Farm);
     gs.apply_daily_effects();
-    assert_eq!(gs.resources.food, 53);
+    assert_eq!(gs.resources.food, 33); // Farm I base harvest of 3
 }
 
 #[test]
@@ -349,7 +350,7 @@ fn morale_cascade_bands() {
 fn sleeping_capacity_and_rough_sleepers() {
     let mut gs = test_state();
     assert_eq!(gs.fortress.sleeping_capacity(), 6);
-    gs.fortress.add_upgrade(Upgrade::Barracks);
+    gs.fortress.add_building(Upgrade::Barracks);
     assert_eq!(gs.fortress.sleeping_capacity(), 11);
 
     // 13 inhabitants vs 11 beds: 2 sleep rough, no warm-sleep bonus,
@@ -502,7 +503,7 @@ fn daily_practice_requires_workplace() {
     gs.apply_daily_effects();
     assert_eq!(gs.inhabitants.inhabitants[0].skills.xp(Skill::Combat), 0);
 
-    gs.fortress.add_upgrade(Upgrade::Barracks);
+    gs.fortress.add_building(Upgrade::Barracks);
     gs.apply_daily_effects();
     assert_eq!(gs.inhabitants.inhabitants[0].skills.xp(Skill::Combat), 2);
 }
@@ -510,13 +511,14 @@ fn daily_practice_requires_workplace() {
 #[test]
 fn skilled_farmers_raise_harvest() {
     let mut gs = test_state();
-    gs.fortress.add_upgrade(Upgrade::Farm);
+    gs.resources.food = 30; // below the granary-less cap, so nothing spoils
+    gs.fortress.add_building(Upgrade::Farm);
     let mut f = Inhabitant::new("F", Role::Farmer);
     f.skills.train(Skill::Farming, 140); // Proficient, index 4
     gs.inhabitants.add(f);
     let food_before = gs.resources.food;
     gs.apply_daily_effects();
-    // base 3 + 4/2 = 5 harvest, minus 1 upkeep (1 inhabitant), +2 practice xp doesn't tier
+    // Farm I base 3 + 4/2 = 5 harvest, minus 1 upkeep (1 inhabitant)
     assert_eq!(gs.resources.food, food_before + 5 - 1);
 }
 
@@ -562,11 +564,15 @@ fn construct_pays_materials_and_builds() {
     assert_eq!(gs.build_availability(Upgrade::Watchtower), BuildAvailability::Ok);
     gs.construct(Upgrade::Watchtower).expect("buildable");
     assert!(gs.fortress.has_upgrade(Upgrade::Watchtower));
-    let cost = Upgrade::Watchtower.build_cost();
+    assert_eq!(gs.fortress.building_level(Upgrade::Watchtower), 1);
+    let cost = Upgrade::Watchtower.build_cost(1);
     assert_eq!(gs.resources.wood, wood_before - cost.wood);
     assert_eq!(gs.resources.stone, stone_before - cost.stone);
-    // can't raise it twice
-    assert_eq!(gs.construct(Upgrade::Watchtower), Err(BuildAvailability::AlreadyBuilt));
+    // building it again tiers it up rather than duplicating
+    gs.resources.apply_delta(&ResourceDelta { wood: 99, stone: 99, ..Default::default() });
+    gs.construct(Upgrade::Watchtower).expect("upgradeable to II");
+    assert_eq!(gs.fortress.building_level(Upgrade::Watchtower), 2);
+    assert_eq!(gs.fortress.buildings.len(), 1);
 }
 
 #[test]
@@ -597,22 +603,254 @@ fn founding_grant_is_free_and_applies_bonuses() {
     let mut gs = test_state(); // no wood/stone — couldn't pay for it
     let pop_before = gs.fortress.max_population;
     let food_before = gs.resources.food;
-    gs.build_upgrade(Upgrade::Inn);
-    assert!(gs.fortress.has_upgrade(Upgrade::Inn));
+    gs.build_upgrade(Upgrade::Housing);
+    assert!(gs.fortress.has_upgrade(Upgrade::Housing));
     assert_eq!(gs.fortress.max_population, pop_before + 5);
     assert_eq!(gs.resources.food, food_before); // charter grant, not purchase
 }
 
 #[test]
-fn inn_adds_beds_and_daily_morale() {
+fn housing_adds_beds_and_population() {
     let mut gs = test_state();
+    let pop_before = gs.fortress.max_population;
     assert_eq!(gs.fortress.sleeping_capacity(), 6);
-    gs.build_upgrade(Upgrade::Inn);
-    assert_eq!(gs.fortress.sleeping_capacity(), 11);
+    gs.build_upgrade(Upgrade::Housing);
+    assert_eq!(gs.fortress.sleeping_capacity(), 11); // +5 beds per plot
+    assert_eq!(gs.fortress.max_population, pop_before + 5);
+}
+
+#[test]
+fn tavern_lifts_morale_daily() {
+    let mut gs = test_state();
+    gs.build_upgrade(Upgrade::Tavern);
     let morale_before = gs.fortress.morale;
     gs.apply_daily_effects();
-    // +1 inn, +1 warm sleep (0 inhabitants in test_state, so no upkeep penalty)
+    // Tavern I cheers the hold by +1 morale a day
     assert!(gs.fortress.morale >= morale_before + 1);
+}
+
+#[test]
+fn lumberyard_yields_wood_by_tier() {
+    let mut gs = test_state();
+    gs.fortress.add_building(Upgrade::Lumberyard); // I
+    let before = gs.resources.wood;
+    gs.apply_daily_effects();
+    assert_eq!(gs.resources.wood, before + 2);
+    gs.fortress.add_building(Upgrade::Lumberyard); // II
+    let before = gs.resources.wood;
+    gs.apply_daily_effects();
+    assert_eq!(gs.resources.wood, before + 3);
+    gs.fortress.add_building(Upgrade::Lumberyard); // III
+    let before = gs.resources.wood;
+    gs.apply_daily_effects();
+    assert_eq!(gs.resources.wood, before + 5);
+}
+
+#[test]
+fn training_yard_drills_the_guard() {
+    let mut gs = test_state();
+    gs.fortress.add_building(Upgrade::TrainingYard);
+    gs.inhabitants.add(guard("G"));
+    gs.apply_daily_effects();
+    // Training Yard I gives the guard +2 Combat practice
+    assert_eq!(gs.inhabitants.inhabitants[0].skills.xp(Skill::Combat), 2);
+}
+
+#[test]
+fn workshop_trains_crafting_at_tier_two() {
+    let mut gs = test_state();
+    // tier I trains no crafting; only a working bench (II+) does
+    gs.fortress.add_building(Upgrade::Workshop); // I
+    gs.inhabitants.add(guard("G"));
+    gs.apply_daily_effects();
+    assert_eq!(gs.inhabitants.inhabitants[0].skills.xp(Skill::Crafting), 0);
+    gs.fortress.add_building(Upgrade::Workshop); // II
+    gs.apply_daily_effects();
+    assert_eq!(gs.inhabitants.inhabitants[0].skills.xp(Skill::Crafting), 1);
+}
+
+#[test]
+fn shrine_softens_demon_dread() {
+    // a demon-tagged morale loss, with and without a shrine
+    let demon_hit = || {
+        let event = make_event(
+            vec![simple_choice(vec![Effect::Morale { amount: -8 }])],
+            vec!["demon"],
+        );
+        event
+    };
+    let mut bare = test_state();
+    let before = bare.fortress.morale;
+    resolve(&demon_hit(), 0, &mut bare);
+    let bare_loss = before - bare.fortress.morale;
+
+    let mut warded = test_state();
+    warded.fortress.add_building(Upgrade::Shrine); // I softens 25%
+    warded.fortress.add_building(Upgrade::Shrine); // II softens 50%
+    let before = warded.fortress.morale;
+    resolve(&demon_hit(), 0, &mut warded);
+    let warded_loss = before - warded.fortress.morale;
+
+    assert_eq!(bare_loss, 8);
+    assert_eq!(warded_loss, 4); // -((8*2)/4)
+}
+
+// ----------------------------------------------------------------------
+// the mortal commander
+// ----------------------------------------------------------------------
+
+fn with_commander(class: ClassKind) -> GameState {
+    let mut gs = test_state();
+    gs.player = Some(PlayerCharacter::new("Cmd", class, Stats::default()));
+    gs
+}
+
+#[test]
+fn commander_eats_too() {
+    let mut bare = test_state(); // no commander, no inhabitants -> no upkeep
+    bare.apply_daily_effects();
+    assert_eq!(bare.resources.food, 50);
+
+    let mut led = with_commander(ClassKind::Warlord); // one mouth
+    led.apply_daily_effects();
+    assert_eq!(led.resources.food, 49); // (1+1)/2 = 1 upkeep
+}
+
+#[test]
+fn fallen_commander_ends_the_run() {
+    let mut gs = with_commander(ClassKind::Warlord);
+    assert!(!gs.is_game_over());
+    gs.player.as_mut().unwrap().damage(100);
+    assert!(gs.commander_has_fallen());
+    assert!(gs.is_game_over());
+}
+
+#[test]
+fn commander_drills_their_home_skill() {
+    let mut gs = with_commander(ClassKind::Steward); // home skill Crafting
+    gs.apply_daily_effects();
+    assert_eq!(gs.player.as_ref().unwrap().skills.xp(Skill::Crafting), 2);
+}
+
+#[test]
+fn healers_tend_a_wounded_commander() {
+    let mut gs = with_commander(ClassKind::Warlord);
+    gs.player.as_mut().unwrap().damage(60); // commander at 40, most wounded
+    let mut healer = Inhabitant::new("H", Role::Healer);
+    healer.skills.train(Skill::Medicine, 50); // Competent -> heals 4
+    gs.inhabitants.add(healer);
+    gs.fortress.add_building(Upgrade::Infirmary);
+    gs.apply_daily_effects();
+    assert!(gs.player.as_ref().unwrap().health > 40);
+}
+
+// ----------------------------------------------------------------------
+// battle reports
+// ----------------------------------------------------------------------
+
+fn battle_event(tags: Vec<&str>) -> Event {
+    make_event(vec![], tags)
+}
+
+#[test]
+fn battle_is_deterministic_per_seed() {
+    let run = || {
+        let mut gs = GameState::new(7);
+        gs.player = Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats::default()));
+        for n in 0..4 {
+            gs.inhabitants.add(guard(&format!("G{n}")));
+        }
+        let ev = make_event(
+            vec![simple_choice(vec![Effect::Battle { power: 15, loot_valuables: 2 }])],
+            vec!["combat"],
+        );
+        resolve(&ev, 0, &mut gs).lines
+    };
+    assert_eq!(run(), run());
+}
+
+#[test]
+fn strong_garrison_routs_a_weak_foe() {
+    let mut gs = test_state();
+    gs.player =
+        Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats { might: 8, wit: 3, heart: 3 }));
+    let mut vet = guard("Vet");
+    vet.skills.train(Skill::Combat, 300); // a hardened veteran
+    gs.inhabitants.add(vet);
+    let valuables_before = gs.resources.valuables;
+    let report = fight_battle(3, 5, &battle_event(vec!["combat"]), &mut gs);
+    assert!(report.victory);
+    assert_eq!(gs.resources.valuables, valuables_before + 5); // looted on victory
+}
+
+#[test]
+fn outmatched_garrison_is_overrun() {
+    let mut gs = test_state(); // no commander, no guards
+    let def_before = gs.fortress.defense;
+    let morale_before = gs.fortress.morale;
+    let report = fight_battle(40, 0, &battle_event(vec!["combat"]), &mut gs);
+    assert!(!report.victory);
+    assert!(gs.fortress.defense < def_before);
+    assert!(gs.fortress.morale < morale_before);
+}
+
+#[test]
+fn demon_battles_are_deadlier_in_deep_darkness() {
+    let win = |seed: u64, darkness: i32| {
+        let mut gs = GameState::new(seed);
+        gs.player = Some(PlayerCharacter::new(
+            "Cmd",
+            ClassKind::Warlord,
+            Stats { might: 6, wit: 3, heart: 3 },
+        ));
+        for n in 0..3 {
+            let mut g = guard(&format!("G{n}"));
+            g.skills.train(Skill::Combat, 150);
+            gs.inhabitants.add(g);
+        }
+        gs.region.darkness = darkness;
+        fight_battle(16, 0, &battle_event(vec!["combat", "demon"]), &mut gs).victory
+    };
+    let wins_quiet = (0..200u64).filter(|s| win(*s, 0)).count();
+    let wins_deep = (0..200u64).filter(|s| win(*s, 90)).count();
+    assert!(wins_deep < wins_quiet, "deep darkness should cost victories: {wins_deep} vs {wins_quiet}");
+}
+
+#[test]
+fn a_catastrophic_battle_can_fell_the_commander() {
+    let fell = (0..100u64).any(|seed| {
+        let mut gs = GameState::new(seed);
+        gs.player = Some(PlayerCharacter::new("Cmd", ClassKind::Mystic, Stats::default()));
+        for _ in 0..6 {
+            if gs.commander_has_fallen() {
+                break;
+            }
+            fight_battle(60, 0, &battle_event(vec!["combat"]), &mut gs);
+        }
+        gs.commander_has_fallen()
+    });
+    assert!(fell, "a lone commander should eventually fall to an overwhelming foe");
+}
+
+// ----------------------------------------------------------------------
+// day cadence: quiet days
+// ----------------------------------------------------------------------
+
+#[test]
+fn quiet_days_thin_out_as_darkness_rises() {
+    let deck = vec![make_event(vec![simple_choice(vec![])], vec![])];
+    let events_fired = |darkness: i32| {
+        (0..300u64)
+            .filter(|seed| {
+                let mut gs = GameState::new(*seed);
+                gs.region.darkness = darkness;
+                roll(&deck, 1, &mut gs, None).is_some()
+            })
+            .count()
+    };
+    let calm = events_fired(0); // event_chance 55 -> many quiet days
+    let dark = events_fired(100); // event_chance 100 -> relentless
+    assert!(dark > calm, "deeper darkness should bring more events: {dark} vs {calm}");
 }
 
 // ----------------------------------------------------------------------

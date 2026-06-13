@@ -29,6 +29,13 @@ pub enum Effect {
         morale: i32,
     },
     AddUpgrade { name: Upgrade },
+    /// A pitched fight: the garrison musters against a foe of `power` and the
+    /// clash is resolved as a narrated battle report (see `battle.rs`).
+    Battle {
+        power: i32,
+        #[serde(default)]
+        loot_valuables: i64,
+    },
     /// Push back (or feed) the regional darkness war: tweak darkness directly,
     /// bolster a random surviving site, or shift the portal pressure.
     Region {
@@ -96,6 +103,10 @@ pub struct Event {
     pub tags: Vec<String>,
     #[serde(default = "default_weight")]
     pub weight: f64,
+    /// Auto events resolve without asking the player — a single foregone
+    /// choice, applied straight to the log. Must have exactly one choice.
+    #[serde(default)]
+    pub auto: bool,
 }
 
 fn default_min_day() -> u32 {

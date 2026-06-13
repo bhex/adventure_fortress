@@ -57,6 +57,14 @@ pub fn roll<'a>(
     gs: &mut GameState,
     last_event_name: Option<&str>,
 ) -> Option<&'a Event> {
+    // Not every day brings a crisis. The chance that *something* happens climbs
+    // with the darkness — quiet days are common early, vanishing as the dark
+    // deepens. Rolled before deck filtering so the sim and the game agree.
+    let event_chance = (55 + gs.region.darkness / 2).clamp(0, 100);
+    if gs.rng.random_range(0..100) >= event_chance {
+        return None; // a quiet day
+    }
+
     let pool = eligible_events(deck, day, gs, last_event_name);
     if pool.is_empty() {
         return None;
@@ -323,6 +331,14 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
                 result.lines.push("Oath Keeper: your bond holds — no one deserts.".to_string());
                 return;
             }
+            // A lively Tavern (II+) gives the restless somewhere to belong:
+            // half the time the would-be deserter thinks better of it.
+            if gs.fortress.building_level(Upgrade::Tavern) >= 2 && gs.rng.random_range(0..2) == 0 {
+                result
+                    .lines
+                    .push("Good cheer at the tavern keeps the restless from leaving.".to_string());
+                return;
+            }
             if let Some(name) = gs.inhabitants.random_non_loyal_name(&mut gs.rng) {
                 let role_name = gs
                     .inhabitants
@@ -365,6 +381,11 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
             result.lines.push(line);
         }
 
+        Effect::Battle { power, loot_valuables } => {
+            let report = crate::battle::fight_battle(*power, *loot_valuables, event, gs);
+            result.lines.extend(report.lines);
+        }
+
         Effect::Region { darkness, site_strength, pressure } => {
             if *darkness != 0 {
                 gs.region.darkness = (gs.region.darkness + darkness).clamp(0, 100);
@@ -397,7 +418,7 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
 
 /// Traits, upgrades, and abilities soften incoming damage based on event tags.
 /// Integer math: 25% steps via -(-h*3//4), 50% via -(-h//2).
-fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32 {
+pub(crate) fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32 {
     let mut h = health;
     // Demons strike harder as the darkness deepens (h is negative here).
     if event.has_tag("demon") {
