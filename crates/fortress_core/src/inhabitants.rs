@@ -144,6 +144,12 @@ pub fn generate_inhabitant(role: Role, rng: &mut GameRng) -> Inhabitant {
         rng.random_range(5..=25)
     };
     skills.train(role.home_skill(), starting_xp);
+    // A rare arrival has the arcane gift. Magic-users are uncommon, and never
+    // healers — healing magic is rarer still and not granted here.
+    if rng.random_range(0..100) < 6 {
+        let school = [Skill::Sorcery, Skill::Warding, Skill::DarkArts][rng.random_range(0..3)];
+        skills.train(school, rng.random_range(40..=90));
+    }
     Inhabitant {
         name,
         role,

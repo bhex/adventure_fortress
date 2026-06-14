@@ -11,16 +11,33 @@ pub enum Skill {
     Medicine,
     Smithing,
     Crafting,
+    // Magic is skill-driven: classes differ by which of these they start with.
+    Sorcery, // raw offensive magic
+    Warding, // defensive & utility magic
+    Stealth, // shadows, infiltration (Mystic)
+    DarkArts, // the darker, riskier arts (Warlock)
 }
 
 impl Skill {
-    pub const ALL: [Skill; 5] = [
+    pub const ALL: [Skill; 9] = [
         Skill::Combat,
         Skill::Farming,
         Skill::Medicine,
         Skill::Smithing,
         Skill::Crafting,
+        Skill::Sorcery,
+        Skill::Warding,
+        Skill::Stealth,
+        Skill::DarkArts,
     ];
+
+    /// The magic skills — used to flag mages and gate arcane effects.
+    pub const MAGIC: [Skill; 4] =
+        [Skill::Sorcery, Skill::Warding, Skill::Stealth, Skill::DarkArts];
+
+    pub fn is_magic(&self) -> bool {
+        Skill::MAGIC.contains(self)
+    }
 
     pub fn name(&self) -> &'static str {
         match self {
@@ -29,6 +46,10 @@ impl Skill {
             Skill::Medicine => "medicine",
             Skill::Smithing => "smithing",
             Skill::Crafting => "crafting",
+            Skill::Sorcery => "sorcery",
+            Skill::Warding => "warding",
+            Skill::Stealth => "stealth",
+            Skill::DarkArts => "dark arts",
         }
     }
 
@@ -40,6 +61,10 @@ impl Skill {
             Skill::Medicine => "physician",
             Skill::Smithing => "smith",
             Skill::Crafting => "crafter",
+            Skill::Sorcery => "sorcerer",
+            Skill::Warding => "warden",
+            Skill::Stealth => "shadow",
+            Skill::DarkArts => "warlock",
         }
     }
 }
@@ -108,6 +133,14 @@ pub struct SkillSet {
     pub medicine: u32,
     pub smithing: u32,
     pub crafting: u32,
+    #[serde(default)]
+    pub sorcery: u32,
+    #[serde(default)]
+    pub warding: u32,
+    #[serde(default)]
+    pub stealth: u32,
+    #[serde(default)]
+    pub dark_arts: u32,
 }
 
 impl SkillSet {
@@ -118,6 +151,10 @@ impl SkillSet {
             Skill::Medicine => self.medicine,
             Skill::Smithing => self.smithing,
             Skill::Crafting => self.crafting,
+            Skill::Sorcery => self.sorcery,
+            Skill::Warding => self.warding,
+            Skill::Stealth => self.stealth,
+            Skill::DarkArts => self.dark_arts,
         }
     }
 
@@ -128,6 +165,10 @@ impl SkillSet {
             Skill::Medicine => &mut self.medicine,
             Skill::Smithing => &mut self.smithing,
             Skill::Crafting => &mut self.crafting,
+            Skill::Sorcery => &mut self.sorcery,
+            Skill::Warding => &mut self.warding,
+            Skill::Stealth => &mut self.stealth,
+            Skill::DarkArts => &mut self.dark_arts,
         }
     }
 

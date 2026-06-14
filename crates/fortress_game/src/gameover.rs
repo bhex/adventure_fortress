@@ -49,20 +49,13 @@ fn spawn_screen(mut commands: Commands, game: Res<Game>) {
         .player
         .as_ref()
         .map(|p| {
-            let ability_list = if p.abilities.is_empty() {
-                "—".to_string()
-            } else {
-                p.abilities.iter().map(|a| a.name()).collect::<Vec<_>>().join(", ")
-            };
             format!(
-                "{} the {}  (Lv.{})  |  Might {}  Wit {}  Heart {}\nAbilities: {}",
+                "{} the {}  |  Might {}  Wit {}  Heart {}",
                 p.name,
                 p.class.name(),
-                p.level,
                 p.stats.might,
                 p.stats.wit,
                 p.stats.heart,
-                ability_list,
             )
         })
         .unwrap_or_default();

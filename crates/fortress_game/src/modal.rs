@@ -4,7 +4,7 @@ use bevy::prelude::*;
 
 use fortress_core::{describe_effects, resolve, stat_check_odds, ChoiceAvailability};
 
-use crate::bridge::{ActiveEvent, Game, GameLog, LevelUpOffers};
+use crate::bridge::{ActiveEvent, Game, GameLog};
 use crate::ui::{button_node, text, tint_buttons, Disabled, ACCENT, BTN_BG, PANEL_BG, TEXT_DIM};
 use crate::AppState;
 
@@ -211,23 +211,12 @@ fn spawn_result_panel(commands: &mut Commands, result: &fortress_core::EventResu
 }
 
 fn continue_click(
-    mut commands: Commands,
     interactions: Query<&Interaction, (Changed<Interaction>, With<ContinueButton>)>,
-    mut game: ResMut<Game>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     let clicked = interactions.iter().any(|i| *i == Interaction::Pressed);
     if !clicked {
         return;
-    }
-    // Level-up check: if the threshold was just crossed, branch to the ability draft.
-    if game.0.should_level_up() {
-        let offers = game.0.ability_offers();
-        if !offers.is_empty() {
-            commands.insert_resource(LevelUpOffers(offers));
-            next_state.set(AppState::LevelUp);
-            return;
-        }
     }
     // The day continues — the clock runs finish_day at midnight.
     next_state.set(AppState::FortressView);

@@ -5,7 +5,7 @@ use bevy::prelude::*;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 
-use fortress_core::{Event, GameState, PlayerAbility};
+use fortress_core::{Event, GameState};
 
 pub const SAVE_FILE: &str = "save.json";
 
@@ -56,10 +56,6 @@ pub struct ActiveEvent {
     pub event: Event,
     pub availability: Vec<fortress_core::ChoiceAvailability>,
 }
-
-/// Pending ability choices for the level-up screen.
-#[derive(Resource)]
-pub struct LevelUpOffers(pub Vec<PlayerAbility>);
 
 /// Day-end pipeline: daily tick → advance → autosave.
 /// Returns the next AppState. The fortress falls only at morale 0 — there is no victory.

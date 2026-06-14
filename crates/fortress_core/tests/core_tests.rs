@@ -726,10 +726,33 @@ fn fallen_commander_ends_the_run() {
 }
 
 #[test]
+fn classes_start_with_their_skill_profile() {
+    // Wizard is selectable and starts a trained caster, not a fighter.
+    let wiz = PlayerCharacter::new("W", ClassKind::Wizard, Stats::default());
+    assert!(wiz.skills.tier(Skill::Sorcery) >= SkillTier::Skilled);
+    assert!(wiz.skills.tier(Skill::Warding) >= SkillTier::Competent);
+    assert!(wiz.class.is_mage());
+
+    // Warlord is a fighter, no magic.
+    let war = PlayerCharacter::new("A", ClassKind::Warlord, Stats::default());
+    assert!(war.skills.tier(Skill::Combat) >= SkillTier::Proficient);
+    assert_eq!(war.skills.xp(Skill::Sorcery), 0);
+    assert!(!war.class.is_mage());
+
+    // every class is constructible and seeds at least one skill
+    for class in ClassKind::ALL {
+        let p = PlayerCharacter::new("P", class, Stats::default());
+        assert!(Skill::ALL.iter().any(|s| p.skills.xp(*s) > 0), "{:?} has no skills", class);
+    }
+}
+
+#[test]
 fn commander_drills_their_home_skill() {
     let mut gs = with_commander(ClassKind::Steward); // home skill Crafting
+    let before = gs.player.as_ref().unwrap().skills.xp(Skill::Crafting);
     gs.apply_daily_effects();
-    assert_eq!(gs.player.as_ref().unwrap().skills.xp(Skill::Crafting), 2);
+    // drills home skill by +2/day on top of the class's starting xp
+    assert_eq!(gs.player.as_ref().unwrap().skills.xp(Skill::Crafting), before + 2);
 }
 
 #[test]

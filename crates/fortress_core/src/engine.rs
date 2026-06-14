@@ -4,7 +4,7 @@ use crate::events::{Choice, Effect, Event, EventResult};
 use crate::fortress::Upgrade;
 use crate::game_state::GameState;
 use crate::inhabitants::{generate_inhabitant, Role, Trait};
-use crate::player::{ClassKind, PlayerAbility, PlayerCharacter, StatKind};
+use crate::player::{ClassKind, PlayerCharacter, StatKind};
 use crate::resources::ResourceDelta;
 use crate::rng::weighted_index;
 use crate::skills::{Skill, SkillTier};
@@ -73,13 +73,8 @@ fn signed(label: &str, amount: i32) -> String {
 /// Rough odds of passing a stat check, given the commander — for the modal.
 pub fn stat_check_odds(check: &crate::events::StatCheck, player: &PlayerCharacter) -> &'static str {
     let stat = player.stats.get(check.stat) as i32;
-    let difficulty = if player.has_ability(PlayerAbility::SilverTongue) {
-        check.difficulty.saturating_sub(1)
-    } else {
-        check.difficulty
-    };
     // success if stat + d6 >= difficulty, i.e. the die must land >= (difficulty - stat)
-    let need = difficulty - stat;
+    let need = check.difficulty - stat;
     let favorable = (7 - need).clamp(0, 6);
     match favorable {
         6 => "certain",
@@ -201,13 +196,8 @@ pub fn resolve(event: &Event, choice_index: usize, gs: &mut GameState) -> EventR
             let stat_value = player.stats.get(check.stat) as i32;
             let die = gs.rng.random_range(1..=6);
             let total = stat_value + die;
-            // Silver Tongue: difficulty -1
-            let difficulty = if player.has_ability(PlayerAbility::SilverTongue) {
-                check.difficulty.saturating_sub(1)
-            } else {
-                check.difficulty
-            };
-            let success = total >= difficulty as i32;
+            let difficulty = check.difficulty;
+            let success = total >= difficulty;
             result.lines.push(format!(
                 "{} check: {} + {} = {} vs {} — {}",
                 check.stat.name(),
@@ -221,20 +211,6 @@ pub fn resolve(event: &Event, choice_index: usize, gs: &mut GameState) -> EventR
             for effect in branch {
                 apply_effect(effect, event, gs, &mut result);
             }
-            // Living Legend: +3 morale on success
-            if success && player.has_ability(PlayerAbility::LivingLegend) {
-                gs.fortress.apply_morale_delta(3);
-                result.lines.push("Living Legend: your triumph lifts spirits. (+3 morale)".to_string());
-            }
-        }
-    }
-
-    // War Cry: after combat events, guards gain +10 morale
-    if event.has_tag("combat") && gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::WarCry)) {
-        let count = gs.inhabitants.get_by_role(Role::Guard).len();
-        if count > 0 {
-            gs.inhabitants.apply_to_role(Role::Guard, 0, 10);
-            result.lines.push("War Cry: the guards are emboldened. (guards +10 morale)".to_string());
         }
     }
 
@@ -324,10 +300,6 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
                 };
                 amount = -((-amount * kept) / 4);
             }
-            // Iron Will: morale losses reduced by 2
-            if amount < 0 && gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::IronWill)) {
-                amount = (amount + 2).min(0);
-            }
             gs.fortress.apply_morale_delta(amount);
             result.lines.push(format!(
                 "Fortress morale {}{}.",
@@ -337,12 +309,7 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
         }
 
         Effect::Defense { amount } => {
-            let mut amount = *amount;
-            // Tactician: defense floor at 10
-            if amount < 0 && gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::Tactician)) {
-                let new_def = (gs.fortress.defense + amount).max(10);
-                amount = new_def - gs.fortress.defense;
-            }
+            let amount = *amount;
             gs.fortress.apply_defense_delta(amount);
             result.lines.push(format!(
                 "Defense {}{}.",
@@ -392,11 +359,6 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
         }
 
         Effect::RemoveInhabitant {} => {
-            // Oath Keeper: nobody leaves
-            if gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::OathKeeper)) {
-                result.lines.push("Oath Keeper: your bond holds — no one deserts.".to_string());
-                return;
-            }
             // A lively Tavern (II+) gives the restless somewhere to belong:
             // half the time the would-be deserter thinks better of it.
             if gs.fortress.building_level(Upgrade::Tavern) >= 2 && gs.rng.random_range(0..2) == 0 {
@@ -534,12 +496,12 @@ pub(crate) fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32
         {
             h = -((-h * 3) / 4);
         }
-        if gs.player.as_ref().is_some_and(|p| p.class == ClassKind::Warlord) {
-            h = -((-h * 3) / 4);
-        }
-        // Battle Hardened: additional 25% combat damage reduction
-        if gs.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::BattleHardened)) {
-            h = -((-h * 3) / 4);
+        // A Warlord commander steadies the line; mitigation scales with their
+        // own Combat tier rather than a fixed talent.
+        if let Some(p) = gs.player.as_ref() {
+            if p.class == ClassKind::Warlord && p.skills.tier(Skill::Combat) >= SkillTier::Skilled {
+                h = -((-h * 3) / 4);
+            }
         }
     }
     if event.has_tag("disaster") && gs.fortress.has_upgrade(Upgrade::Infirmary) {

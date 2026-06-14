@@ -4,7 +4,6 @@ mod build;
 mod charcreate;
 mod clock;
 mod gameover;
-mod levelup;
 mod map;
 mod modal;
 mod picking;
@@ -27,7 +26,6 @@ pub enum AppState {
     EventModal,
     BuildMenu,
     RegionView,
-    LevelUp,
     GameOver,
 }
 
@@ -75,7 +73,6 @@ fn main() {
             modal::ModalPlugin,
             build::BuildMenuPlugin,
             region_panel::RegionPanelPlugin,
-            levelup::LevelUpPlugin,
             gameover::GameOverPlugin,
         ))
         .run();

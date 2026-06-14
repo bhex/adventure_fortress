@@ -23,11 +23,10 @@ pub use fortress::{
     level_numeral, BuildOutcome, Building, Fortress, Upgrade, HOUSING_PLOTS, MAX_BUILDING_LEVEL,
 };
 pub use game_state::{
-    BuildAvailability, GameState, ADVENTURER_MIN_REPUTATION, LEVEL_UP_INTERVAL, MAX_ADVENTURERS,
-    SAVE_VERSION,
+    BuildAvailability, GameState, ADVENTURER_MIN_REPUTATION, MAX_ADVENTURERS, SAVE_VERSION,
 };
 pub use inhabitants::{generate_inhabitant, Inhabitant, InhabitantManager, Role, Trait};
-pub use player::{ability_offers, ClassKind, PlayerAbility, PlayerCharacter, StatKind, Stats};
+pub use player::{ClassKind, PlayerCharacter, StatKind, Stats};
 pub use region::{darkness_band, DarknessBand, Region, Site, SiteKind};
 pub use resources::{amount_phrase, band_for, ResourceDelta, ResourceKind, Resources, StockBand};
 pub use rng::GameRng;

@@ -376,15 +376,8 @@ fn update_inspect(
             let commander = gs
                 .player
                 .as_ref()
-                .map(|p| format!("{} the {}  Lv.{}", p.name, p.class.name(), p.level))
+                .map(|p| format!("{} the {}  (hp {} · mo {})", p.name, p.class.name(), p.health, p.morale))
                 .unwrap_or_default();
-            let abilities = gs.player.as_ref().map(|p| {
-                if p.abilities.is_empty() {
-                    "none yet — survive to earn them".to_string()
-                } else {
-                    p.abilities.iter().map(|a| a.name()).collect::<Vec<_>>().join(", ")
-                }
-            }).unwrap_or_default();
             let stores: Vec<String> = [
                 fortress_core::ResourceKind::Valuables,
                 fortress_core::ResourceKind::Gear,
@@ -418,9 +411,8 @@ fn update_inspect(
                     .join("\n")
             };
             format!(
-                "{}\nAbilities: {}\n\n{}\nRenown: {}\n\nHeroes:\n{}\n\nClick an inhabitant or building\nto inspect it.",
+                "{}\n\n{}\nRenown: {}\n\nHeroes:\n{}\n\nClick an inhabitant or building\nto inspect it.",
                 commander,
-                abilities,
                 stores.join("\n"),
                 renown,
                 heroes,
@@ -446,26 +438,17 @@ fn update_inspect(
         Some(Selection::Gate) => "The Gate\nAll trouble arrives here first.".to_string(),
         Some(Selection::Building(u)) => building_inspect(&game, *u),
         Some(Selection::Commander) => match &game.0.player {
-            Some(p) => {
-                let abilities = if p.abilities.is_empty() {
-                    "none yet".to_string()
-                } else {
-                    p.abilities.iter().map(|a| a.name()).collect::<Vec<_>>().join(", ")
-                };
-                format!(
-                    "{} the {}  (Lv.{})\nCommander of the hold\nHealth {}  Morale {}\nMight {}  Wit {}  Heart {}\nAbilities: {}\n\n{}",
-                    p.name,
-                    p.class.name(),
-                    p.level,
-                    p.health,
-                    p.morale,
-                    p.stats.might,
-                    p.stats.wit,
-                    p.stats.heart,
-                    abilities,
-                    skill_bars(&p.skills),
-                )
-            }
+            Some(p) => format!(
+                "{} the {}\nCommander of the hold\nHealth {}  Morale {}\nMight {}  Wit {}  Heart {}\n\n{}",
+                p.name,
+                p.class.name(),
+                p.health,
+                p.morale,
+                p.stats.might,
+                p.stats.wit,
+                p.stats.heart,
+                skill_bars(&p.skills),
+            ),
             None => String::new(),
         },
         Some(Selection::Hero(name)) => {

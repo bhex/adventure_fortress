@@ -1,111 +1,55 @@
-use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
-use crate::rng::GameRng;
 use crate::skills::{Skill, SkillSet};
-
-// ---------------------------------------------------------------------------
-// Abilities
-// ---------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum PlayerAbility {
-    IronWill,
-    Tactician,
-    IronRations,
-    WarCry,
-    OathKeeper,
-    SilverTongue,
-    BattleHardened,
-    LivingLegend,
-    Resourceful,
-    Fortify,
-}
-
-impl PlayerAbility {
-    pub const ALL: [PlayerAbility; 10] = [
-        PlayerAbility::IronWill,
-        PlayerAbility::Tactician,
-        PlayerAbility::IronRations,
-        PlayerAbility::WarCry,
-        PlayerAbility::OathKeeper,
-        PlayerAbility::SilverTongue,
-        PlayerAbility::BattleHardened,
-        PlayerAbility::LivingLegend,
-        PlayerAbility::Resourceful,
-        PlayerAbility::Fortify,
-    ];
-
-    pub fn name(&self) -> &'static str {
-        match self {
-            PlayerAbility::IronWill => "Iron Will",
-            PlayerAbility::Tactician => "Tactician",
-            PlayerAbility::IronRations => "Iron Rations",
-            PlayerAbility::WarCry => "War Cry",
-            PlayerAbility::OathKeeper => "Oath Keeper",
-            PlayerAbility::SilverTongue => "Silver Tongue",
-            PlayerAbility::BattleHardened => "Battle Hardened",
-            PlayerAbility::LivingLegend => "Living Legend",
-            PlayerAbility::Resourceful => "Resourceful",
-            PlayerAbility::Fortify => "Fortify",
-        }
-    }
-
-    pub fn description(&self) -> &'static str {
-        match self {
-            PlayerAbility::IronWill => "Each morale loss to the fortress is reduced by 2.",
-            PlayerAbility::Tactician => "Your defense cannot fall below 10.",
-            PlayerAbility::IronRations => "Food upkeep reduced by 1 each day.",
-            PlayerAbility::WarCry => "After each combat event, all guards gain +10 morale.",
-            PlayerAbility::OathKeeper => "Inhabitants will never abandon the fortress.",
-            PlayerAbility::SilverTongue => "All stat check difficulties are reduced by 1.",
-            PlayerAbility::BattleHardened => "Combat damage to your people is reduced by an additional 25%.",
-            PlayerAbility::LivingLegend => "Successful stat checks restore +3 fortress morale.",
-            PlayerAbility::Resourceful => "The fortress gathers +2 wood and +1 stone each day.",
-            PlayerAbility::Fortify => "The fortress gains +1 defense at the start of each day.",
-        }
-    }
-}
-
-/// Returns up to 3 random abilities the player does not already possess.
-pub fn ability_offers(player: &PlayerCharacter, rng: &mut GameRng) -> Vec<PlayerAbility> {
-    let owned: std::collections::HashSet<PlayerAbility> = player.abilities.iter().cloned().collect();
-    let mut available: Vec<PlayerAbility> = PlayerAbility::ALL
-        .iter()
-        .cloned()
-        .filter(|a| !owned.contains(a))
-        .collect();
-    available.shuffle(rng);
-    available.into_iter().take(3).collect()
-}
 
 // ---------------------------------------------------------------------------
 // Classes
 // ---------------------------------------------------------------------------
+//
+// The commander is "an inhabitant who leads": no levels, no talent picks —
+// just a class that grants a starting skill profile, which then grows by use
+// like everyone else's. Magic is skill-driven (see `Skill`), so a class is
+// really just where its skills begin.
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClassKind {
     Warlord,
     Steward,
+    Wizard,
     Mystic,
+    Warlock,
+    Sorcerer,
 }
 
 impl ClassKind {
-    pub const ALL: [ClassKind; 3] = [ClassKind::Warlord, ClassKind::Steward, ClassKind::Mystic];
+    pub const ALL: [ClassKind; 6] = [
+        ClassKind::Warlord,
+        ClassKind::Steward,
+        ClassKind::Wizard,
+        ClassKind::Mystic,
+        ClassKind::Warlock,
+        ClassKind::Sorcerer,
+    ];
 
     pub fn name(&self) -> &'static str {
         match self {
             ClassKind::Warlord => "Warlord",
             ClassKind::Steward => "Steward",
+            ClassKind::Wizard => "Wizard",
             ClassKind::Mystic => "Mystic",
+            ClassKind::Warlock => "Warlock",
+            ClassKind::Sorcerer => "Sorcerer",
         }
     }
 
     pub fn description(&self) -> &'static str {
         match self {
-            ClassKind::Warlord => "+2 Might. Your people take less harm in battle.",
-            ClassKind::Steward => "+2 Wit. Starts with extra valuables; barter deals cost less.",
-            ClassKind::Mystic => "+2 Heart. +1 daily morale while the people's spirits hold.",
+            ClassKind::Warlord => "A war-leader. Skilled in arms; the garrison fights harder at their side.",
+            ClassKind::Steward => "An administrator. Deep in crafts and logistics; barter comes cheaper.",
+            ClassKind::Wizard => "A trained spellcaster — wards, bolts, and utility, with a blade in a pinch.",
+            ClassKind::Mystic => "A shadow-walker: stealth and battle-magic, some steel, a little healing.",
+            ClassKind::Warlock => "A dabbler in darker arts — potent, perilous, and unloved by the light.",
+            ClassKind::Sorcerer => "Raw innate power: fearsome offensive magic, hard to fully control.",
         }
     }
 
@@ -113,16 +57,40 @@ impl ClassKind {
         match self {
             ClassKind::Warlord => StatKind::Might,
             ClassKind::Steward => StatKind::Wit,
+            ClassKind::Wizard => StatKind::Wit,
             ClassKind::Mystic => StatKind::Heart,
+            ClassKind::Warlock => StatKind::Heart,
+            ClassKind::Sorcerer => StatKind::Might,
         }
     }
 
-    /// The trade a commander hones by ruling: drilled daily like any worker.
+    /// The trade the commander hones daily by ruling (drilled like any worker).
     pub fn home_skill(&self) -> Skill {
         match self {
             ClassKind::Warlord => Skill::Combat,
             ClassKind::Steward => Skill::Crafting,
-            ClassKind::Mystic => Skill::Medicine,
+            ClassKind::Wizard => Skill::Sorcery,
+            ClassKind::Mystic => Skill::Stealth,
+            ClassKind::Warlock => Skill::DarkArts,
+            ClassKind::Sorcerer => Skill::Sorcery,
+        }
+    }
+
+    pub fn is_mage(&self) -> bool {
+        matches!(self, ClassKind::Wizard | ClassKind::Mystic | ClassKind::Warlock | ClassKind::Sorcerer)
+    }
+
+    /// Where this class's skills begin (xp). Everything else starts at zero.
+    pub fn starting_skills(&self) -> &'static [(Skill, u32)] {
+        match self {
+            ClassKind::Warlord => &[(Skill::Combat, 140), (Skill::Crafting, 30)],
+            ClassKind::Steward => &[(Skill::Crafting, 120), (Skill::Farming, 40)],
+            ClassKind::Wizard => &[(Skill::Sorcery, 110), (Skill::Warding, 90), (Skill::Combat, 20)],
+            ClassKind::Mystic => {
+                &[(Skill::Stealth, 110), (Skill::Sorcery, 60), (Skill::Combat, 40), (Skill::Medicine, 20)]
+            }
+            ClassKind::Warlock => &[(Skill::DarkArts, 130), (Skill::Sorcery, 50)],
+            ClassKind::Sorcerer => &[(Skill::Sorcery, 160), (Skill::Warding, 30)],
         }
     }
 }
@@ -192,7 +160,8 @@ impl Stats {
 }
 
 // ---------------------------------------------------------------------------
-// Player character
+// Player character — the commander. Lives by the same rules as everyone else:
+// can be wounded, lose heart, and fall, and the realm falls with them.
 // ---------------------------------------------------------------------------
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -200,10 +169,6 @@ pub struct PlayerCharacter {
     pub name: String,
     pub class: ClassKind,
     pub stats: Stats,
-    pub level: u32,
-    pub abilities: Vec<PlayerAbility>,
-    // The commander lives by the same rules as everyone else: they can be
-    // wounded, lose heart, and fall — and the realm falls with them.
     #[serde(default = "default_player_health")]
     pub health: i32,
     #[serde(default = "default_player_morale")]
@@ -222,20 +187,18 @@ fn default_player_morale() -> i32 {
 
 impl PlayerCharacter {
     pub fn new(name: &str, class: ClassKind, stats: Stats) -> PlayerCharacter {
+        let mut skills = SkillSet::default();
+        for (skill, xp) in class.starting_skills() {
+            skills.train(*skill, *xp);
+        }
         PlayerCharacter {
             name: name.to_string(),
             class,
             stats,
-            level: 1,
-            abilities: Vec::new(),
             health: default_player_health(),
             morale: default_player_morale(),
-            skills: SkillSet::default(),
+            skills,
         }
-    }
-
-    pub fn has_ability(&self, ability: PlayerAbility) -> bool {
-        self.abilities.contains(&ability)
     }
 
     pub fn is_alive(&self) -> bool {

@@ -1,6 +1,6 @@
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 use crate::adventurers::{generate_adventurer, Adventurer, AdventurerClass};
@@ -8,16 +8,15 @@ use crate::engine::train_role;
 use crate::fortress::{level_numeral, BuildOutcome, Fortress, Upgrade};
 use crate::region::DarknessBand;
 use crate::inhabitants::{generate_inhabitant, InhabitantManager, Role};
-use crate::player::{ability_offers, ClassKind, PlayerAbility, PlayerCharacter};
+use crate::player::{ClassKind, PlayerCharacter};
 use crate::region::Region;
 use crate::resources::{ResourceDelta, Resources};
 use crate::rng::GameRng;
 use crate::skills::Skill;
 
-pub const SAVE_VERSION: u32 = 6;
+pub const SAVE_VERSION: u32 = 7;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
-pub const LEVEL_UP_INTERVAL: u32 = 3;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SaveError {
@@ -55,8 +54,10 @@ pub struct GameState {
     pub reputation: i32,
     pub adventurers: Vec<Adventurer>,
     /// Story flags raised by events, gating multi-step arcs (see `engine`).
+    /// A `BTreeSet` (not `HashSet`) so saves serialize in a stable order — the
+    /// deterministic-run guarantee depends on it.
     #[serde(default)]
-    pub flags: HashSet<String>,
+    pub flags: BTreeSet<String>,
 }
 
 /// Most heroes a fortress can host at once.
@@ -80,7 +81,7 @@ impl GameState {
             region,
             reputation: 10,
             adventurers: Vec::new(),
-            flags: HashSet::new(),
+            flags: BTreeSet::new(),
         }
     }
 
@@ -177,28 +178,6 @@ impl GameState {
         }
     }
 
-    /// Returns true when the most recently resolved event crosses a level-up threshold.
-    pub fn should_level_up(&self) -> bool {
-        self.events_resolved > 0 && self.events_resolved % LEVEL_UP_INTERVAL == 0
-    }
-
-    /// Generates up to 3 ability offers for the current player, consuming RNG.
-    pub fn ability_offers(&mut self) -> Vec<PlayerAbility> {
-        if let Some(player) = &self.player {
-            ability_offers(player, &mut self.rng)
-        } else {
-            vec![]
-        }
-    }
-
-    /// Applies a chosen ability and increments the player's level.
-    pub fn apply_level_up(&mut self, ability: PlayerAbility) {
-        if let Some(player) = &mut self.player {
-            player.level += 1;
-            player.abilities.push(ability);
-        }
-    }
-
     /// Day-end passive tick: upgrades, food upkeep, morale cascade. Returns log lines.
     pub fn apply_daily_effects(&mut self) -> Vec<String> {
         let mut lines = Vec::new();
@@ -286,18 +265,6 @@ impl GameState {
             if let Some(name) = self.tend_most_wounded(cleric_heal) {
                 lines.push(format!("The cleric tends {name}. (+{cleric_heal} health)"));
             }
-        }
-
-        // Fortify: +1 defense per day
-        if self.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::Fortify)) {
-            self.fortress.apply_defense_delta(1);
-            lines.push("The fortress grows stronger. (+1 defense)".to_string());
-        }
-
-        // Resourceful: +2 wood, +1 stone per day
-        if self.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::Resourceful)) {
-            self.resources.apply_delta(&ResourceDelta { wood: 2, stone: 1, ..Default::default() });
-            lines.push("Resourceful hands gather supplies. (+2 wood, +1 stone)".to_string());
         }
 
         // Daily practice: working your trade slowly builds the skill.
@@ -463,13 +430,7 @@ impl GameState {
         let commander = i64::from(self.player.is_some());
         let mouths = alive + commander;
         if mouths > 0 {
-            let base_upkeep = (mouths + 1) / 2;
-            let discount = if self.player.as_ref().is_some_and(|p| p.has_ability(PlayerAbility::IronRations)) {
-                1
-            } else {
-                0
-            };
-            let upkeep = (base_upkeep - discount).max(0);
+            let upkeep = (mouths + 1) / 2;
             if self.resources.food >= upkeep {
                 self.resources.apply_delta(&ResourceDelta { food: -upkeep, ..Default::default() });
             } else {
