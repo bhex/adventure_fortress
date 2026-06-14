@@ -37,7 +37,7 @@ crates/fortress_core/         # pure, deterministic, fully tested
   skills.rs       # SkillSet: skills × tiers, xp-based growth
   region.rs       # the darkness war: Sites, darkness 0-100, portal pressure, refugee waves
   adventurers.rs  # heroes who arrive on renown/darkness
-  battle.rs       # fight_battle -> narrated BattleReport
+  battle.rs       # fight_battle -> multi-round, per-combatant, narrated BattleReport
   engine.rs       # roll() (quiet-day gate + eligibility), resolve(), apply_effect, mitigate_damage
   events.rs       # Event/Choice/Effect/StatCheck dataclasses + serde
   content.rs      # JSON loader (globs content/events/*.json)
@@ -53,6 +53,8 @@ Game loop: clock runs in real time → at dawn `engine::roll()` picks today's ev
 - **Events are pure data**; `engine::eligible_events` gates by day/morale/resources/role/upgrade/darkness and **story flags** (`requires_flags`/`forbids_flags`); `Effect::SetFlag`/`ClearFlag` drive multi-step arcs.
 - **Damage mitigation** is tag-driven (`engine::mitigate_damage`): `combat` softened by Blacksmith/skill/gear/armor-items/class; `disaster` halved by Infirmary; `demon` scaled up by darkness and softened by the Shrine.
 - **Items** (`items.rs`): the forge turns **ore** into typed quality items (`Fortress.craft_focus`), the Wizard Tower binds enchants with **residue** (dropped by demon battles), the best items auto-equip into combat/work via `equip_rating`, and items wear out unless the smith maintains them. Artifacts (rare, sometimes cursed) arrive via `Effect::GrantItem` event chains and never degrade.
+- **Combat** (`battle.rs`): resolves over up to `MAX_ROUNDS` rounds with swinging `momentum`; per-combatant actions (commander/heroes strike, casters bolt with Sorcery or blunt the foe with Warding, guards hold the line); a `BREACH_AT` momentum gates the gate-breach that throws non-combatant reserves to the wall. Weapons/armor/morale all feed prowess.
+- **Morale passive**: high morale (≥75) adds a combat edge and (≥80) a day's extra practice + faster job drift; `Effect::Morale` overflow above the 100 cap converts to permanent renown so it isn't wasted.
 - **Daily tick**: building yields, food upkeep, starvation/sleep/morale cascades, skill training, craft/enchant/maintain, region tick, refugee/hero arrivals.
 
 ## Conventions

@@ -1,16 +1,20 @@
-//! Battle resolution: one pass, deterministic, narrated.
+//! Battle resolution: several rounds, deterministic, narrated.
 //!
 //! Combat events deal their harm through `fight_battle` rather than flat role
-//! damage. The commander and the guard muster their prowess, one clash decides
-//! the day, and the wounded are named individuals — wounds run through the same
+//! damage. The defenders muster — the commander and heroes strike, mages cast
+//! Sorcery or throw up Wards, the guard holds the line — and the fight plays out
+//! over a handful of rounds as momentum swings. Lose ground badly enough and the
+//! gate breaks: then *everyone* takes up arms, the skilled worth far more than
+//! the levy. The wounded are named individuals; wounds run through the same
 //! `damage()` paths and combat mitigation as every other hit, so traits, gear,
-//! and abilities all still tell.
+//! armor, and class skills all still tell.
 
 use crate::adventurers::AdventurerClass;
 use crate::engine::mitigate_damage;
 use crate::events::Event;
 use crate::game_state::GameState;
 use crate::inhabitants::Role;
+use crate::items::ItemKind;
 use crate::region::DarknessBand;
 use crate::resources::{ResourceDelta, ResourceKind, StockBand};
 use crate::skills::Skill;
@@ -24,6 +28,32 @@ pub struct BattleReport {
     pub victory: bool,
 }
 
+/// At most this many exchanges; a decisive swing ends it sooner.
+const MAX_ROUNDS: usize = 5;
+/// Momentum past which one side has plainly broken the other.
+const DECISIVE: i32 = 16;
+/// Momentum at which the line fails and the gate is forced — every hand fights.
+const BREACH_AT: i32 = -8;
+
+/// What a combatant is, for narration and for who can be wounded.
+#[derive(Clone, Copy, PartialEq)]
+enum ActorKind {
+    Commander,
+    Caster, // commander or inhabitant fighting chiefly with offensive magic
+    Guard,
+    Knight, // a sworn hero — lends prowess, kept whole (no health model)
+    Levy,   // a non-combatant pressed to the wall on a breach
+}
+
+/// One participant on the wall. `push` is their per-round contribution; only
+/// `mortal` ones can be wounded.
+struct Combatant {
+    name: String,
+    push: i32,
+    mortal: bool,
+    kind: ActorKind,
+}
+
 /// Resolve one battle against a foe of the given `power`, paying out
 /// `loot_valuables` on victory. Fully deterministic through `gs.rng`.
 pub fn fight_battle(
@@ -35,53 +65,76 @@ pub fn fight_battle(
     let mut lines = Vec::new();
 
     // ---- muster the defenders ----
-    // `mortals` are the woundable participants (commander + guards); knights
-    // lend their prowess and hold the line but have no health model.
-    let mut prowess = 0i32;
-    let mut mortals: Vec<String> = Vec::new();
+    let mut frontline: Vec<Combatant> = Vec::new();
+    let mut reserves: Vec<Combatant> = Vec::new();
+    let mut warding = 0i32; // Wards blunt the foe rather than adding to our push
 
     let commander_fights = gs.player.as_ref().is_some_and(|p| p.is_alive());
+    let commander_name: Option<String> =
+        commander_fights.then(|| gs.player.as_ref().unwrap().name.clone());
     if let Some(p) = &gs.player {
         if p.is_alive() {
-            prowess += p.stats.might as i32 + p.skills.tier(Skill::Combat).index() as i32;
-            mortals.push(p.name.clone());
+            let martial = p.stats.might as i32 + p.skills.tier(Skill::Combat).index() as i32;
+            let offense = magic_offense(&p.skills);
+            let ward = p.skills.tier(Skill::Warding).index() as i32;
+            // A caster commander leads with the stronger of blade or bolt.
+            let (push, kind) = if offense > martial {
+                (offense, ActorKind::Caster)
+            } else {
+                (martial, ActorKind::Commander)
+            };
+            warding += ward;
+            frontline.push(Combatant { name: p.name.clone(), push, mortal: true, kind });
         }
     }
-    let guard_names: Vec<String> = gs
-        .inhabitants
-        .get_by_role(Role::Guard)
-        .iter()
-        .map(|g| g.name.clone())
-        .collect();
-    for g in gs.inhabitants.get_by_role(Role::Guard) {
-        prowess += g.skills.tier(Skill::Combat).index() as i32 + 1;
+
+    // Guards stand the line; mage-folk among the inhabitants step up to cast or
+    // to ward; everyone else is a reserve, called up only on a breach.
+    for i in gs.inhabitants.get_alive() {
+        match i.role {
+            Role::Guard => {
+                let push = i.skills.tier(Skill::Combat).index() as i32 + 1;
+                frontline.push(Combatant {
+                    name: i.name.clone(),
+                    push,
+                    mortal: true,
+                    kind: ActorKind::Guard,
+                });
+            }
+            _ => {
+                let offense = magic_offense(&i.skills);
+                let ward = i.skills.tier(Skill::Warding).index() as i32;
+                if offense >= 4 || ward >= 2 {
+                    // a true mage: bolts add to our push, wards blunt the foe
+                    warding += ward;
+                    frontline.push(Combatant {
+                        name: i.name.clone(),
+                        push: offense.max(1),
+                        mortal: true,
+                        kind: ActorKind::Caster,
+                    });
+                } else {
+                    // ordinary folk — fight only in extremis, and poorly
+                    let push = i.skills.tier(Skill::Combat).index() as i32;
+                    reserves.push(Combatant {
+                        name: i.name.clone(),
+                        push,
+                        mortal: true,
+                        kind: ActorKind::Levy,
+                    });
+                }
+            }
+        }
     }
-    let guard_count = guard_names.len();
-    mortals.extend(guard_names);
 
-    let knights: Vec<String> = gs
-        .adventurers
-        .iter()
-        .filter(|a| a.class == AdventurerClass::Knight)
-        .map(|a| {
-            prowess += a.perk_tier().index() as i32;
-            a.name.clone()
-        })
-        .collect();
-
-    // a stocked armory and stout walls add their weight
-    prowess += match gs.resources.band(ResourceKind::Gear) {
-        StockBand::Exhausted => 0,
-        StockBand::Scarce => 1,
-        StockBand::Lean => 1,
-        StockBand::Adequate => 2,
-        StockBand::Comfortable => 3,
-        StockBand::Plentiful => 4,
-    };
-    // proper weapons in the racks: the best hands take the best blades.
-    let weapon_slots = usize::from(commander_fights) + guard_count + knights.len();
-    prowess += gs.items.equip_rating(crate::items::ItemKind::Weapon, weapon_slots);
-    prowess += gs.fortress.defense / 10;
+    for a in gs.adventurers.iter().filter(|a| a.class == AdventurerClass::Knight) {
+        frontline.push(Combatant {
+            name: a.name.clone(),
+            push: a.perk_tier().index() as i32,
+            mortal: false,
+            kind: ActorKind::Knight,
+        });
+    }
 
     // ---- the foe ----
     let mut enemy = power.max(1);
@@ -92,53 +145,66 @@ pub fn fight_battle(
             _ => {}
         }
     }
+    let enemy_effective = (enemy - warding).max(1);
 
-    lines.push(format!(
-        "{} muster against a foe of strength {}.",
-        muster_phrase(commander_fights, guard_count, knights.len()),
-        enemy,
-    ));
-
-    // ---- the clash: one contested roll ----
-    let our_roll = prowess + gs.rng.random_range(1..=6);
-    let their_roll = enemy + gs.rng.random_range(1..=6);
-    let margin = our_roll - their_roll;
-    let victory = margin >= 0;
-
-    // a hard-won victory still draws blood; a rout lands many blows
-    let blows = if victory {
-        ((4 - margin) / 4).clamp(0, 3)
-    } else {
-        (1 + (-margin) / 3).clamp(1, 5)
+    // High hearts press the attack; a sullen hold gives ground — the morale
+    // passive made flesh on the wall.
+    let morale_edge = match gs.fortress.morale {
+        m if m >= 75 => 3,
+        m if m <= 25 => -3,
+        _ => 0,
     };
 
-    for _ in 0..blows {
-        if mortals.is_empty() {
-            // no one left to bleed — the walls take what comes
-            break;
+    lines.push(format!(
+        "{} muster against a foe of strength {}{}.",
+        muster_phrase(&frontline, commander_name.as_deref()),
+        enemy,
+        if warding > 0 { " (the wards bite into it)" } else { "" },
+    ));
+
+    // ---- the rounds ----
+    let mut momentum = 0i32;
+    let mut breached = false;
+    let mut rounds = 0usize;
+    while rounds < MAX_ROUNDS && !frontline.is_empty() {
+        rounds += 1;
+        let our = side_strength(&frontline, gs, morale_edge) + momentum / 5;
+        let our_roll = our + gs.rng.random_range(1..=6);
+        let foe_roll = enemy_effective + gs.rng.random_range(1..=6);
+        let round_margin = our_roll - foe_roll;
+        momentum += round_margin;
+
+        lines.push(round_line(rounds, &frontline, round_margin, gs));
+
+        // a lost round draws blood; the bigger the loss, the more blows land
+        if round_margin < 0 {
+            let blows = (1 + (-round_margin) / 5).clamp(1, 3);
+            for _ in 0..blows {
+                if let Some(line) = land_a_blow(&mut frontline, event, gs) {
+                    lines.push(line);
+                }
+                if frontline.is_empty() {
+                    break;
+                }
+            }
         }
-        let idx = gs.rng.random_range(0..mortals.len());
-        let target = mortals[idx].clone();
-        let raw = -gs.rng.random_range(12..=22);
-        let wound = -mitigate_damage(raw, event, gs); // positive after mitigation
-        let died = apply_wound(gs, &target, wound);
-        if died {
-            lines.push(format!("{target} falls in the press."));
-            // a death in battle is felt across the hold — a Graveyard to honor
-            // the fallen eases the grief.
-            let grief = if gs.fortress.graveyard_level() > 0 { -1 } else { -3 };
-            gs.fortress.apply_morale_delta(grief);
-            gs.apply_reputation_delta(-1);
-            mortals.remove(idx);
-        } else {
-            lines.push(format!("{target} takes a wound. (-{wound} health)"));
+
+        // the gate gives: every hand to the wall (once)
+        if momentum <= BREACH_AT && !breached && !reserves.is_empty() {
+            breached = true;
+            let n = reserves.len();
+            frontline.append(&mut reserves);
+            lines.push(format!(
+                "The gate is forced — {n} more snatch up whatever will cut and rush the breach!"
+            ));
+        }
+
+        if momentum.abs() >= DECISIVE {
+            break; // one side has plainly broken
         }
     }
 
-    // knights hold the breach regardless of the tide
-    if let Some(first) = knights.first() {
-        lines.push(format!("{first} holds the breach."));
-    }
+    let victory = momentum >= 0 && !frontline.is_empty();
 
     // ---- the reckoning ----
     if victory {
@@ -168,6 +234,75 @@ pub fn fight_battle(
     }
 
     BattleReport { lines, victory }
+}
+
+/// Best offensive-magic contribution from a skill set: Sorcery or the DarkArts,
+/// whichever runs stronger, worth twice its tier in raw push.
+fn magic_offense(skills: &crate::skills::SkillSet) -> i32 {
+    let sorcery = skills.tier(Skill::Sorcery).index() as i32;
+    let dark = skills.tier(Skill::DarkArts).index() as i32;
+    sorcery.max(dark) * 2
+}
+
+/// Our whole strength this round: every active fighter's push, plus the weapons
+/// the best hands carry, the bulk armory, the walls, and the day's heart.
+fn side_strength(active: &[Combatant], gs: &GameState, morale_edge: i32) -> i32 {
+    let combat: i32 = active.iter().map(|c| c.push).sum();
+    let weapons = gs.items.equip_rating(ItemKind::Weapon, active.len());
+    let gear = match gs.resources.band(ResourceKind::Gear) {
+        StockBand::Exhausted => 0,
+        StockBand::Scarce | StockBand::Lean => 1,
+        StockBand::Adequate => 2,
+        StockBand::Comfortable => 3,
+        StockBand::Plentiful => 4,
+    };
+    combat + weapons + gear + gs.fortress.defense / 10 + morale_edge
+}
+
+/// Pick the round's standout and tell what they did, coloured by the tide.
+fn round_line(round: usize, active: &[Combatant], margin: i32, gs: &GameState) -> String {
+    let won = margin >= 0;
+    // the one with the most to give carries the round's narration
+    let hero = active.iter().max_by_key(|c| c.push);
+    let action = match hero.map(|h| (h.kind, h.name.as_str())) {
+        Some((ActorKind::Commander, n)) => format!("{n} carves into the enemy ranks"),
+        Some((ActorKind::Caster, n)) => format!("{n} looses a searing bolt"),
+        Some((ActorKind::Knight, n)) => format!("{n} anchors the shieldwall"),
+        Some((ActorKind::Guard, n)) => format!("{n} and the watch hold formation"),
+        Some((ActorKind::Levy, n)) => format!("{n} swings a borrowed blade"),
+        None => "the defenders rally".to_string(),
+    };
+    let tide = if won {
+        if gs.fortress.morale >= 75 { "the hold surges forward" } else { "and the line presses on" }
+    } else {
+        "but the foe drives them back a step"
+    };
+    format!("Round {round}: {action} — {tide}.")
+}
+
+/// One blow lands on a random mortal of the frontline, through the shared
+/// `damage()`/mitigation path. Returns a line; drops the slain from the line
+/// and grieves the hold.
+fn land_a_blow(active: &mut Vec<Combatant>, event: &Event, gs: &mut GameState) -> Option<String> {
+    let mortal_idxs: Vec<usize> =
+        active.iter().enumerate().filter(|(_, c)| c.mortal).map(|(i, _)| i).collect();
+    if mortal_idxs.is_empty() {
+        return None; // only sworn heroes left standing — the walls take the rest
+    }
+    let pick = mortal_idxs[gs.rng.random_range(0..mortal_idxs.len())];
+    let target = active[pick].name.clone();
+    let raw = -gs.rng.random_range(12..=22);
+    let wound = -mitigate_damage(raw, event, gs); // positive after mitigation
+    let died = apply_wound(gs, &target, wound);
+    if died {
+        let grief = if gs.fortress.graveyard_level() > 0 { -1 } else { -3 };
+        gs.fortress.apply_morale_delta(grief);
+        gs.apply_reputation_delta(-1);
+        active.remove(pick);
+        Some(format!("{target} falls in the press."))
+    } else {
+        Some(format!("{target} takes a wound. (-{wound} health)"))
+    }
 }
 
 /// What a beaten foe leaves on the field — keyed off the event's tags, the
@@ -230,16 +365,28 @@ fn apply_wound(gs: &mut GameState, name: &str, wound: i32) -> bool {
     false
 }
 
-fn muster_phrase(commander: bool, guards: usize, knights: usize) -> String {
+fn muster_phrase(frontline: &[Combatant], commander_name: Option<&str>) -> String {
     let mut parts = Vec::new();
-    if commander {
+    if commander_name.is_some() {
         parts.push("the commander".to_string());
     }
+    let guards = frontline.iter().filter(|c| c.kind == ActorKind::Guard).count();
     match guards {
         0 => {}
         1 => parts.push("a lone guard".to_string()),
         n => parts.push(format!("{n} guards")),
     }
+    // casters other than the commander
+    let mages = frontline
+        .iter()
+        .filter(|c| c.kind == ActorKind::Caster && Some(c.name.as_str()) != commander_name)
+        .count();
+    match mages {
+        0 => {}
+        1 => parts.push("a mage".to_string()),
+        n => parts.push(format!("{n} mages")),
+    }
+    let knights = frontline.iter().filter(|c| c.kind == ActorKind::Knight).count();
     match knights {
         0 => {}
         1 => parts.push("a sworn knight".to_string()),

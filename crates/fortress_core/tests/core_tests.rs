@@ -1353,6 +1353,101 @@ fn demon_battles_drop_residue() {
     assert!(gs.resources.residue >= 1, "a beaten demon leaves residue");
 }
 
+// ----------------------------------------------------------------------
+// multi-round combat & the morale passive (Stage 5)
+// ----------------------------------------------------------------------
+
+#[test]
+fn battles_play_out_over_rounds() {
+    let mut gs = test_state();
+    gs.player = Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats { might: 6, wit: 3, heart: 3 }));
+    for n in 0..3 {
+        gs.inhabitants.add(guard(&format!("G{n}")));
+    }
+    let report = fight_battle(12, 0, &battle_event(vec!["combat"]), &mut gs);
+    let rounds = report.lines.iter().filter(|l| l.starts_with("Round ")).count();
+    assert!(rounds >= 2, "a battle should resolve over several rounds: {:?}", report.lines);
+}
+
+#[test]
+fn a_caster_commander_throws_spells() {
+    let mut gs = test_state();
+    // a Wizard leads with the bolt, not the blade
+    gs.player = Some(PlayerCharacter::new("Archon", ClassKind::Wizard, Stats::default()));
+    let report = fight_battle(2, 0, &battle_event(vec!["combat"]), &mut gs);
+    assert!(
+        report.lines.iter().any(|l| l.contains("bolt")),
+        "a caster commander should sling sorcery: {:?}",
+        report.lines
+    );
+}
+
+#[test]
+fn wards_blunt_the_foe() {
+    let mut gs = test_state();
+    let mut warden = Inhabitant::new("Wardel", Role::Peasant);
+    warden.skills.train(Skill::Warding, 60); // Competent warder
+    gs.inhabitants.add(warden);
+    let report = fight_battle(6, 0, &battle_event(vec!["combat"]), &mut gs);
+    assert!(report.lines[0].contains("wards"), "warders should be noted in the muster: {:?}", report.lines[0]);
+}
+
+#[test]
+fn a_breach_throws_everyone_to_the_wall() {
+    let mut gs = test_state();
+    gs.inhabitants.add(guard("Lone")); // a single defender on the line
+    for n in 0..4 {
+        gs.inhabitants.add(Inhabitant::new(&format!("P{n}"), Role::Peasant)); // reserves
+    }
+    let report = fight_battle(28, 0, &battle_event(vec!["combat"]), &mut gs);
+    assert!(!report.victory, "a lone guard can't hold a foe of 28");
+    assert!(
+        report.lines.iter().any(|l| l.contains("gate is forced")),
+        "the breach should call up the reserves: {:?}",
+        report.lines
+    );
+}
+
+#[test]
+fn high_morale_wins_more_fights() {
+    let win = |seed: u64, morale: i32| {
+        let mut gs = GameState::new(seed);
+        gs.fortress.morale = morale;
+        gs.player = Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats { might: 4, wit: 3, heart: 3 }));
+        for n in 0..2 {
+            let mut g = guard(&format!("G{n}"));
+            g.skills.train(Skill::Combat, 50);
+            gs.inhabitants.add(g);
+        }
+        // re-pin morale (the muster reads it; tick doesn't run here)
+        fight_battle(11, 0, &battle_event(vec!["combat"]), &mut gs).victory
+    };
+    let low = (0..200u64).filter(|s| win(*s, 15)).count();
+    let high = (0..200u64).filter(|s| win(*s, 90)).count();
+    assert!(high > low, "high spirits should win more close fights: {high} vs {low}");
+}
+
+#[test]
+fn morale_at_the_cap_converts_to_renown() {
+    let mut gs = test_state();
+    gs.fortress.morale = 99;
+    let rep_before = gs.reputation;
+    let result = resolve_single(&mut gs, Effect::Morale { amount: 12 }, vec![]);
+    assert_eq!(gs.fortress.morale, 100, "morale still tops out at 100");
+    assert!(gs.reputation > rep_before, "the wasted cheer should spread the fortress's name");
+    assert!(result.lines.iter().any(|l| l.contains("renown")));
+}
+
+#[test]
+fn thriving_holds_train_harder() {
+    let mut gs = test_state();
+    gs.fortress.add_building(Upgrade::Barracks);
+    gs.inhabitants.add(guard("G"));
+    gs.fortress.morale = 85; // a thriving hold: +1 practice
+    gs.apply_daily_effects();
+    assert_eq!(gs.inhabitants.inhabitants[0].skills.xp(Skill::Combat), 3); // 2 + 1 passive
+}
+
 #[test]
 fn grant_item_effect_places_an_artifact() {
     let mut gs = test_state();

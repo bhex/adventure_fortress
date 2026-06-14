@@ -277,6 +277,10 @@ impl GameState {
             }
         }
 
+        // A hold in high spirits works and learns harder — the morale passive:
+        // a thriving fortress puts an extra edge on every day's practice.
+        let practice_bonus: u32 = if self.fortress.morale >= 80 { 1 } else { 0 };
+
         // Daily practice: working your trade slowly builds the skill.
         const WORKPLACES: [(Role, Upgrade); 4] = [
             (Role::Guard, Upgrade::Barracks),
@@ -286,7 +290,7 @@ impl GameState {
         ];
         for (role, workplace) in WORKPLACES {
             if self.fortress.has_upgrade(workplace) {
-                lines.extend(train_role(self, role, role.home_skill(), 2));
+                lines.extend(train_role(self, role, role.home_skill(), 2 + practice_bonus));
             }
         }
         // The Training Yard drills the guards harder with every tier.
@@ -308,7 +312,7 @@ impl GameState {
         // The commander hones their own trade by ruling, like any worker.
         if let Some(player) = &mut self.player {
             if player.is_alive() {
-                player.skills.train(player.class.home_skill(), 2);
+                player.skills.train(player.class.home_skill(), 2 + practice_bonus);
             }
         }
 
@@ -324,7 +328,8 @@ impl GameState {
                 .filter(|i| i.is_alive && i.role == Role::Peasant)
             {
                 i.skills.train(Skill::Crafting, 1);
-                if rng.random_range(0..100) < 8 {
+                // a thriving hold finds its callings faster (morale passive)
+                if rng.random_range(0..100) < 8 + practice_bonus * 4 {
                     let best = Role::TRADES
                         .iter()
                         .copied()

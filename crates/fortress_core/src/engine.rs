@@ -322,6 +322,18 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
                 };
                 amount = -((-amount * kept) / 4);
             }
+            // A hold already at full heart wastes nothing: cheer it can't hold
+            // spreads its name instead — the morale cap becomes a small, lasting
+            // boon rather than a number that goes nowhere.
+            let headroom = (100 - gs.fortress.morale).max(0);
+            if amount > headroom {
+                let overflow = amount - headroom;
+                let boon = (overflow / 3).max(1);
+                gs.apply_reputation_delta(boon);
+                result.lines.push(format!(
+                    "Spirits are already at their height — the overflowing goodwill spreads the fortress's name. (+{boon} renown)"
+                ));
+            }
             gs.fortress.apply_morale_delta(amount);
             result.lines.push(format!(
                 "Fortress morale {}{}.",
