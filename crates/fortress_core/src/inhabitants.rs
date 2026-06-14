@@ -12,10 +12,16 @@ pub enum Role {
     Farmer,
     Blacksmith,
     Healer,
+    /// The unspecialized arrival: general labor, learns a trade over time.
+    Peasant,
 }
 
 impl Role {
-    pub const ALL: [Role; 4] = [Role::Guard, Role::Farmer, Role::Blacksmith, Role::Healer];
+    pub const ALL: [Role; 5] =
+        [Role::Guard, Role::Farmer, Role::Blacksmith, Role::Healer, Role::Peasant];
+
+    /// Roles a peasant can drift into / be assigned to (the real trades).
+    pub const TRADES: [Role; 4] = [Role::Guard, Role::Farmer, Role::Blacksmith, Role::Healer];
 
     pub fn name(&self) -> &'static str {
         match self {
@@ -23,6 +29,7 @@ impl Role {
             Role::Farmer => "farmer",
             Role::Blacksmith => "blacksmith",
             Role::Healer => "healer",
+            Role::Peasant => "peasant",
         }
     }
 
@@ -33,7 +40,14 @@ impl Role {
             Role::Farmer => Skill::Farming,
             Role::Blacksmith => Skill::Smithing,
             Role::Healer => Skill::Medicine,
+            Role::Peasant => Skill::Crafting,
         }
+    }
+
+    /// Only guards stand in the line by default; the rest fight only when the
+    /// gate is breached (handled in combat). Peasants are non-combatants.
+    pub fn is_combatant(&self) -> bool {
+        matches!(self, Role::Guard)
     }
 }
 
@@ -45,15 +59,31 @@ pub enum Trait {
     Sickly,
     Loyal,
     Greedy,
+    Strong,
+    Clever,
+    Hardy,
+    Cowardly,
+    Lazy,
+    Devout,
+    /// Hidden: a spy slipped in from the dark. Never shown; bides, then betrays.
+    Infiltrator,
 }
 
 impl Trait {
-    pub const ALL: [Trait; 5] = [
+    /// Traits an ordinary arrival may roll (excludes the hidden Infiltrator,
+    /// which is seeded separately when the darkness runs deep).
+    pub const ROLLABLE: [Trait; 11] = [
         Trait::Brave,
         Trait::Skilled,
         Trait::Sickly,
         Trait::Loyal,
         Trait::Greedy,
+        Trait::Strong,
+        Trait::Clever,
+        Trait::Hardy,
+        Trait::Cowardly,
+        Trait::Lazy,
+        Trait::Devout,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -63,7 +93,19 @@ impl Trait {
             Trait::Sickly => "sickly",
             Trait::Loyal => "loyal",
             Trait::Greedy => "greedy",
+            Trait::Strong => "strong",
+            Trait::Clever => "clever",
+            Trait::Hardy => "hardy",
+            Trait::Cowardly => "cowardly",
+            Trait::Lazy => "lazy",
+            Trait::Devout => "devout",
+            Trait::Infiltrator => "infiltrator",
         }
+    }
+
+    /// Hidden traits are never surfaced to the player in the roster/inspect.
+    pub fn is_hidden(&self) -> bool {
+        matches!(self, Trait::Infiltrator)
     }
 }
 
@@ -72,12 +114,16 @@ const FARMER_NAMES: [&str; 10] = ["Abel", "Barrett", "Colm", "Davin", "Emmet", "
 const BLACKSMITH_NAMES: [&str; 10] = ["Aldous", "Bryn", "Cade", "Duncan", "Eamon", "Fergus", "Gawain", "Hadleigh", "Ivan", "Jorin"];
 const HEALER_NAMES: [&str; 10] = ["Aideen", "Brenna", "Ciara", "Deirdre", "Eileen", "Fiona", "Grainne", "Hilde", "Isla", "Jorah"];
 
+const PEASANT_NAMES: [&str; 10] =
+    ["Alby", "Bryn", "Cleg", "Dell", "Emm", "Fenn", "Gil", "Hob", "Ned", "Ott"];
+
 fn names_for(role: Role) -> &'static [&'static str] {
     match role {
         Role::Guard => &GUARD_NAMES,
         Role::Farmer => &FARMER_NAMES,
         Role::Blacksmith => &BLACKSMITH_NAMES,
         Role::Healer => &HEALER_NAMES,
+        Role::Peasant => &PEASANT_NAMES,
     }
 }
 
@@ -127,10 +173,22 @@ impl Inhabitant {
     }
 }
 
+/// Most who reach the gates are common folk; trained specialists are rarer.
+/// You shape your garrison by assigning roles, not by who happens to arrive.
+pub fn random_arrival_role(rng: &mut GameRng) -> Role {
+    match weighted_index(rng, &[5.0, 2.0, 2.0, 1.0, 1.0]).unwrap_or(0) {
+        0 => Role::Peasant,
+        1 => Role::Farmer,
+        2 => Role::Guard,
+        3 => Role::Blacksmith,
+        _ => Role::Healer,
+    }
+}
+
 pub fn generate_inhabitant(role: Role, rng: &mut GameRng) -> Inhabitant {
     let name = names_for(role).choose(rng).unwrap().to_string();
     let num_traits = weighted_index(rng, &[4.0, 4.0, 2.0]).unwrap_or(0);
-    let mut pool = Trait::ALL.to_vec();
+    let mut pool = Trait::ROLLABLE.to_vec();
     pool.shuffle(rng);
     let traits: Vec<Trait> = pool.into_iter().take(num_traits).collect();
     let health = if traits.contains(&Trait::Sickly) { 70 } else { 100 };

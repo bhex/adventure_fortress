@@ -468,19 +468,19 @@ fn update_inspect(
         Some(Selection::Inhabitant(name)) => {
             match game.0.inhabitants.inhabitants.iter().find(|i| &i.name == name) {
                 Some(i) => {
-                    let traits = if i.traits.is_empty() {
-                        "—".to_string()
-                    } else {
-                        i.traits.iter().map(|t| t.name()).collect::<Vec<_>>().join(", ")
-                    };
+                    // hidden traits (e.g. infiltrators) are never shown
+                    let shown: Vec<&str> =
+                        i.traits.iter().filter(|t| !t.is_hidden()).map(|t| t.name()).collect();
+                    let traits = if shown.is_empty() { "—".to_string() } else { shown.join(", ") };
                     let flavor = match i.role {
                         Role::Guard => "Keeps watch through the long nights.",
                         Role::Farmer => "Coaxes life from stubborn soil.",
                         Role::Blacksmith => "The ring of the hammer is constant.",
                         Role::Healer => "Mends what the world breaks.",
+                        Role::Peasant => "Willing hands, waiting for a trade.",
                     };
                     format!(
-                        "{}\n{}\nHealth {}  Morale {}\nTraits: {}\n\n{}\n\n{}",
+                        "{}\n{}\nHealth {}  Morale {}\nTraits: {}\n\n{}\n\n{}\n\nAssign: [1]guard [2]farmer\n[3]smith [4]healer [5]peasant",
                         i.name,
                         i.role.name(),
                         i.health,

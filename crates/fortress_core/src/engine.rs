@@ -323,10 +323,7 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
                 result.lines.push("The fortress is full — they move on.".to_string());
                 return;
             }
-            let role = role.unwrap_or_else(|| {
-                let idx = gs.rng.random_range(0..Role::ALL.len());
-                Role::ALL[idx]
-            });
+            let role = role.unwrap_or_else(|| crate::inhabitants::random_arrival_role(&mut gs.rng));
             let newcomer = generate_inhabitant(role, &mut gs.rng);
             let traits = if newcomer.traits.is_empty() {
                 String::new()

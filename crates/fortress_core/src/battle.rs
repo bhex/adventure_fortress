@@ -121,6 +121,9 @@ pub fn fight_battle(
         let died = apply_wound(gs, &target, wound);
         if died {
             lines.push(format!("{target} falls in the press."));
+            // a death in battle is felt across the hold
+            gs.fortress.apply_morale_delta(-3);
+            gs.apply_reputation_delta(-1);
             mortals.remove(idx);
         } else {
             lines.push(format!("{target} takes a wound. (-{wound} health)"));

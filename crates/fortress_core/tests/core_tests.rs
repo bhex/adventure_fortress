@@ -726,6 +726,34 @@ fn fallen_commander_ends_the_run() {
 }
 
 #[test]
+fn most_arrivals_are_common_folk() {
+    let mut rng = fortress_core::GameRng::seed_from_u64(1);
+    let peasants = (0..500)
+        .filter(|_| fortress_core::inhabitants::random_arrival_role(&mut rng) == Role::Peasant)
+        .count();
+    assert!(peasants > 200, "peasants should dominate arrivals: {peasants}/500");
+}
+
+#[test]
+fn peasants_learn_a_trade_over_time() {
+    let mut gs = test_state();
+    gs.resources.food = 500; // keep them fed across many days
+    let mut p = Inhabitant::new("Pat", Role::Peasant);
+    p.skills.train(Skill::Farming, 40); // shows a farmer's aptitude
+    gs.inhabitants.add(p);
+    let mut became = None;
+    for _ in 0..200 {
+        gs.apply_daily_effects();
+        let role = gs.inhabitants.inhabitants[0].role;
+        if role != Role::Peasant {
+            became = Some(role);
+            break;
+        }
+    }
+    assert_eq!(became, Some(Role::Farmer));
+}
+
+#[test]
 fn classes_start_with_their_skill_profile() {
     // Wizard is selectable and starts a trained caster, not a fighter.
     let wiz = PlayerCharacter::new("W", ClassKind::Wizard, Stats::default());

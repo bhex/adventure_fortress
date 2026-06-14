@@ -17,7 +17,7 @@ impl Plugin for RosterPlugin {
             .add_systems(OnEnter(AppState::FortressView), spawn_panel)
             .add_systems(
                 Update,
-                (cycle_controls, refresh_rows, row_click, highlight_selected_row)
+                (cycle_controls, assign_role_keys, refresh_rows, row_click, highlight_selected_row)
                     .chain()
                     .run_if(in_state(AppState::FortressView)),
             );
@@ -63,7 +63,8 @@ fn next_filter(f: Option<fortress_core::Role>) -> Option<fortress_core::Role> {
         Some(Role::Guard) => Some(Role::Farmer),
         Some(Role::Farmer) => Some(Role::Blacksmith),
         Some(Role::Blacksmith) => Some(Role::Healer),
-        Some(Role::Healer) => None,
+        Some(Role::Healer) => Some(Role::Peasant),
+        Some(Role::Peasant) => None,
     }
 }
 
@@ -172,7 +173,7 @@ fn snapshot(game: &Game, controls: &RosterControls) -> RosterSnap {
 
     // then the inhabitants — counted for the header, then filtered & sorted
     let alive = gs.inhabitants.get_alive();
-    let mut role_counts = [0usize; 4];
+    let mut role_counts = [0usize; fortress_core::Role::ALL.len()];
     for i in &alive {
         role_counts[i.role as usize] += 1;
     }
@@ -185,11 +186,10 @@ fn snapshot(game: &Game, controls: &RosterControls) -> RosterSnap {
     }
     for i in &shown {
         let (tier, skill) = i.skills.signature();
-        let traits = if i.traits.is_empty() {
-            String::new()
-        } else {
-            format!(" · {}", i.traits.iter().map(|t| t.name()).collect::<Vec<_>>().join(", "))
-        };
+        let visible: Vec<&str> =
+            i.traits.iter().filter(|t| !t.is_hidden()).map(|t| t.name()).collect();
+        let traits =
+            if visible.is_empty() { String::new() } else { format!(" · {}", visible.join(", ")) };
         rows.push(RosterEntry {
             kind: RowKind::Inhabitant(i.role),
             glyph: role_glyph(i.role).0,
@@ -355,6 +355,32 @@ fn cycle_controls(
     }
     if filter_btn.iter().any(|i| *i == Interaction::Pressed) {
         controls.filter = next_filter(controls.filter);
+    }
+}
+
+/// With an inhabitant selected, digit keys reassign their role — the manual
+/// half of "assign + drift". (Heroes/commander are unaffected.)
+fn assign_role_keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    selected: Res<Selected>,
+    mut game: ResMut<Game>,
+) {
+    let Some(Selection::Inhabitant(name)) = &selected.0 else { return };
+    let role = if keys.just_pressed(KeyCode::Digit1) {
+        fortress_core::Role::Guard
+    } else if keys.just_pressed(KeyCode::Digit2) {
+        fortress_core::Role::Farmer
+    } else if keys.just_pressed(KeyCode::Digit3) {
+        fortress_core::Role::Blacksmith
+    } else if keys.just_pressed(KeyCode::Digit4) {
+        fortress_core::Role::Healer
+    } else if keys.just_pressed(KeyCode::Digit5) {
+        fortress_core::Role::Peasant
+    } else {
+        return;
+    };
+    if let Some(i) = game.0.inhabitants.inhabitants.iter_mut().find(|i| &i.name == name) {
+        i.role = role;
     }
 }
 

@@ -107,6 +107,7 @@ pub fn role_glyph(role: Role) -> (char, Color) {
         Role::Farmer => ('f', Color::srgb(0.3, 0.9, 0.3)),
         Role::Blacksmith => ('b', Color::srgb(0.95, 0.75, 0.2)),
         Role::Healer => ('h', Color::srgb(0.3, 0.9, 0.95)),
+        Role::Peasant => ('p', Color::srgb(0.7, 0.65, 0.55)),
     }
 }
 

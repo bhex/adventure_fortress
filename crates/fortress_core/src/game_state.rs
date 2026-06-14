@@ -7,7 +7,7 @@ use crate::adventurers::{generate_adventurer, Adventurer, AdventurerClass};
 use crate::engine::train_role;
 use crate::fortress::{level_numeral, BuildOutcome, Fortress, Upgrade};
 use crate::region::DarknessBand;
-use crate::inhabitants::{generate_inhabitant, InhabitantManager, Role};
+use crate::inhabitants::{generate_inhabitant, InhabitantManager, Role, Trait};
 use crate::player::{ClassKind, PlayerCharacter};
 use crate::region::Region;
 use crate::resources::{ResourceDelta, Resources};
@@ -195,8 +195,14 @@ impl GameState {
                 if self.inhabitants.count_alive() as u32 >= self.fortress.max_population {
                     break;
                 }
-                let role = Role::ALL[self.rng.random_range(0..Role::ALL.len())];
-                let refugee = generate_inhabitant(role, &mut self.rng);
+                let role = crate::inhabitants::random_arrival_role(&mut self.rng);
+                let mut refugee = generate_inhabitant(role, &mut self.rng);
+                // The deeper the dark, the likelier a refugee is something else
+                // wearing a refugee's face — a spy that bides, then betrays.
+                let infiltrate_chance = (self.region.darkness - 30).max(0) / 3; // 0..~23%
+                if (self.rng.random_range(0..100) as i32) < infiltrate_chance {
+                    refugee.traits.push(crate::inhabitants::Trait::Infiltrator);
+                }
                 lines.push(format!(
                     "{} the {} arrives with the refugees.",
                     refugee.name,
@@ -299,6 +305,60 @@ impl GameState {
         if let Some(player) = &mut self.player {
             if player.is_alive() {
                 player.skills.train(player.class.home_skill(), 2);
+            }
+        }
+
+        // Peasants find their calling: idle hands pick up general craft, and
+        // now and then take up the trade they've shown the most aptitude for.
+        {
+            let rng = &mut self.rng;
+            let mut drifted = Vec::new();
+            for i in self
+                .inhabitants
+                .inhabitants
+                .iter_mut()
+                .filter(|i| i.is_alive && i.role == Role::Peasant)
+            {
+                i.skills.train(Skill::Crafting, 1);
+                if rng.random_range(0..100) < 8 {
+                    let best = Role::TRADES
+                        .iter()
+                        .copied()
+                        .max_by_key(|r| i.skills.xp(r.home_skill()))
+                        .unwrap();
+                    if i.skills.xp(best.home_skill()) >= 20 {
+                        i.role = best;
+                        drifted.push((i.name.clone(), best));
+                    }
+                }
+            }
+            for (name, role) in drifted {
+                lines.push(format!("{name} takes up the life of a {}.", role.name()));
+            }
+        }
+
+        // Infiltrators bide until the dark runs strong, then strike and flee.
+        if self.region.darkness >= 40 {
+            let spy = self
+                .inhabitants
+                .inhabitants
+                .iter()
+                .find(|i| i.is_alive && i.has_trait(Trait::Infiltrator))
+                .map(|i| i.name.clone());
+            if let Some(name) = spy {
+                if self.rng.random_range(0..100) < 15 {
+                    self.resources.apply_delta(&ResourceDelta {
+                        food: -8,
+                        valuables: -4,
+                        ..Default::default()
+                    });
+                    self.fortress.apply_morale_delta(-5);
+                    self.apply_reputation_delta(-2);
+                    self.inhabitants.remove(&name);
+                    lines.push(format!(
+                        "{name} was no refugee but a spy — stores plundered, then gone into the dark. (-5 morale)"
+                    ));
+                }
             }
         }
 
