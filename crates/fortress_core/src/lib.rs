@@ -12,6 +12,7 @@ pub mod region;
 pub mod resources;
 pub mod rng;
 pub mod skills;
+pub mod world;
 
 pub use adventurers::{generate_adventurer, Adventurer, AdventurerClass};
 pub use battle::{fight_battle, BattleReport};
@@ -33,3 +34,4 @@ pub use region::{darkness_band, DarknessBand, Region, Site, SiteKind};
 pub use resources::{amount_phrase, band_for, ResourceDelta, ResourceKind, Resources, StockBand};
 pub use rng::GameRng;
 pub use skills::{tier_for_xp, Skill, SkillSet, SkillTier};
+pub use world::{Season, Weather, World, DAYS_PER_SEASON};

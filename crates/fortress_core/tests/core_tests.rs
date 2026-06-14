@@ -1448,6 +1448,113 @@ fn thriving_holds_train_harder() {
     assert_eq!(gs.inhabitants.inhabitants[0].skills.xp(Skill::Combat), 3); // 2 + 1 passive
 }
 
+// ----------------------------------------------------------------------
+// seasons, weather & world end-state (Stage 6)
+// ----------------------------------------------------------------------
+
+#[test]
+fn seasons_follow_the_calendar() {
+    assert_eq!(Season::for_day(1), Season::Spring);
+    assert_eq!(Season::for_day(12), Season::Spring);
+    assert_eq!(Season::for_day(13), Season::Summer);
+    assert_eq!(Season::for_day(25), Season::Autumn);
+    assert_eq!(Season::for_day(37), Season::Winter);
+    assert_eq!(Season::for_day(49), Season::Spring); // the wheel turns round
+}
+
+#[test]
+fn weather_is_derived_and_the_founding_day_is_calm() {
+    // same seed + day -> same skies, every time (no rng draw)
+    assert_eq!(World::for_day(42, 17), World::for_day(42, 17));
+    // day one always dawns clear, whatever the seed
+    for seed in 0..20 {
+        assert_eq!(World::for_day(seed, 1).weather, Weather::Clear);
+    }
+}
+
+#[test]
+fn season_and_weather_multipliers() {
+    assert_eq!(World { season: Season::Spring, weather: Weather::Clear }.farm_mult_pct(), 100);
+    assert_eq!(World { season: Season::Summer, weather: Weather::Clear }.farm_mult_pct(), 115);
+    assert_eq!(World { season: Season::Winter, weather: Weather::Clear }.farm_mult_pct(), 50);
+    // foul weather compounds with the season
+    assert_eq!(World { season: Season::Winter, weather: Weather::Snow }.farm_mult_pct(), 30);
+}
+
+#[test]
+fn winter_thins_the_harvest() {
+    let mut gs = test_state();
+    gs.resources.food = 10; // well below the spoilage cap
+    gs.fortress.add_building(Upgrade::Farm);
+    gs.inhabitants.add(Inhabitant::new("F", Role::Farmer)); // no farming skill
+    gs.fortress.day = 37; // deep winter
+    gs.apply_daily_effects();
+    let w = gs.world;
+    assert_eq!(w.season, Season::Winter);
+    // base 3, no skill/tools -> raw 3; harvest scaled by season+weather; -1 upkeep
+    let expected = 10 + 3 * w.farm_mult_pct() / 100 - 1;
+    assert_eq!(gs.resources.food, expected);
+    assert!(gs.resources.food < 12, "winter should bite into the larder");
+}
+
+#[test]
+fn storms_hamper_the_defenders() {
+    let win = |seed: u64, weather: Weather| {
+        let mut gs = GameState::new(seed);
+        gs.world.weather = weather; // battles read the standing weather
+        gs.player = Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats::default()));
+        for n in 0..2 {
+            let mut g = guard(&format!("G{n}"));
+            g.skills.train(Skill::Combat, 50);
+            gs.inhabitants.add(g);
+        }
+        fight_battle(11, 0, &battle_event(vec!["combat"]), &mut gs).victory
+    };
+    let clear = (0..200u64).filter(|s| win(*s, Weather::Clear)).count();
+    let storm = (0..200u64).filter(|s| win(*s, Weather::Storm)).count();
+    assert!(storm < clear, "a storm should cost the defenders fights: {storm} vs {clear}");
+}
+
+#[test]
+fn seasonal_events_fire_only_in_their_season() {
+    let mut e = make_event(vec![simple_choice(vec![])], vec![]);
+    e.requires_season = Some(Season::Winter);
+    let gs = test_state();
+    // day 5 is spring — the winter event stays in the deck
+    assert!(eligible_events(std::slice::from_ref(&e), 5, &gs, None).is_empty());
+    // day 37 is winter — now it may fire
+    assert_eq!(eligible_events(std::slice::from_ref(&e), 37, &gs, None).len(), 1);
+}
+
+#[test]
+fn a_fallen_world_stills_the_envoys_then_rebuilds() {
+    let mut gs = test_state();
+    // an envoy event needs a living realm beyond the walls
+    let envoy = make_event(vec![simple_choice(vec![])], vec!["diplomacy"]);
+    assert_eq!(eligible_events(std::slice::from_ref(&envoy), 5, &gs, None).len(), 1);
+
+    // the whole region falls
+    gs.region.sites.clear();
+    assert!(gs.region.all_fallen());
+    assert!(
+        eligible_events(std::slice::from_ref(&envoy), 5, &gs, None).is_empty(),
+        "no envoys come once the world has fallen"
+    );
+
+    // but survivors regroup, and a fragile camp rises from the ruin
+    let mut rebuilt = false;
+    for _ in 0..200 {
+        gs.region.darkness = 20; // keep the window open for the test
+        gs.region.tick(&mut gs.rng);
+        if !gs.region.sites.is_empty() {
+            rebuilt = true;
+            break;
+        }
+    }
+    assert!(rebuilt, "survivors should eventually rebuild");
+    assert_eq!(gs.region.sites[0].kind, SiteKind::Survivors);
+}
+
 #[test]
 fn grant_item_effect_places_an_artifact() {
     let mut gs = test_state();

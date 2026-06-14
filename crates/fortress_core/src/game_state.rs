@@ -14,8 +14,9 @@ use crate::region::Region;
 use crate::resources::{ResourceDelta, Resources};
 use crate::rng::GameRng;
 use crate::skills::Skill;
+use crate::world::World;
 
-pub const SAVE_VERSION: u32 = 8;
+pub const SAVE_VERSION: u32 = 9;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 
@@ -62,6 +63,9 @@ pub struct GameState {
     /// The armory of typed, quality-graded items — see `items`.
     #[serde(default)]
     pub items: ItemStock,
+    /// The turning year: season + the day's weather (derived, see `world`).
+    #[serde(default)]
+    pub world: World,
 }
 
 /// Most heroes a fortress can host at once.
@@ -87,6 +91,7 @@ impl GameState {
             adventurers: Vec::new(),
             flags: BTreeSet::new(),
             items: ItemStock::default(),
+            world: World::default(),
         }
     }
 
@@ -186,6 +191,25 @@ impl GameState {
     /// Day-end passive tick: upgrades, food upkeep, morale cascade. Returns log lines.
     pub fn apply_daily_effects(&mut self) -> Vec<String> {
         let mut lines = Vec::new();
+
+        // The turning year: derive today's season and weather (no rng draw).
+        let prev_weather = self.world.weather;
+        self.world = World::for_day(self.run_seed, self.fortress.day);
+        if self.world.weather != prev_weather && self.world.weather.is_notable() {
+            lines.push(match self.world.weather {
+                crate::world::Weather::Rain => "Rain sweeps in over the walls.".to_string(),
+                crate::world::Weather::Fog => "A thick fog settles on the hold.".to_string(),
+                crate::world::Weather::Storm => "A storm batters the fortress.".to_string(),
+                crate::world::Weather::Heatwave => "The day bakes under a merciless sun.".to_string(),
+                crate::world::Weather::Snow => "Snow falls thick and cold.".to_string(),
+                crate::world::Weather::Clear => String::new(),
+            });
+        }
+        // Foul weather wears on the hold's spirits.
+        let weather_morale = self.world.weather.morale_delta();
+        if weather_morale != 0 {
+            self.fortress.apply_morale_delta(weather_morale);
+        }
 
         // The wider war: darkness shifts, sites hold or fall.
         lines.extend(self.region.tick(&mut self.rng));
@@ -432,10 +456,13 @@ impl GameState {
         // Night fires: the hold burns timber for warmth and light. A real cost
         // once the woodpile matters; nothing burns if there's nothing to burn.
         let pop = self.inhabitants.count_alive() as i64;
-        let firewood = if pop > 0 { (pop / 6).max(1) } else { 0 };
+        let firewood = if pop > 0 { (pop / 6).max(1) + self.world.heating_extra() } else { 0 };
         if firewood > 0 && self.resources.wood > 0 {
             let burned = firewood.min(self.resources.wood);
             self.resources.apply_delta(&ResourceDelta { wood: -burned, ..Default::default() });
+            if self.world.heating_extra() > 0 {
+                lines.push("The cold bites — the hold burns extra timber to keep warm.".to_string());
+            }
         }
 
         let farm_level = self.fortress.building_level(Upgrade::Farm);
@@ -462,9 +489,17 @@ impl GameState {
             if self.items.best_rating(ItemKind::Tool) >= 3 {
                 tool_bonus += 1;
             }
-            let harvest = base + skill_bonus as i64 + tool_bonus;
+            // Season and weather decide whether the fields are generous or grim.
+            let raw = base + skill_bonus as i64 + tool_bonus;
+            let harvest = raw * self.world.farm_mult_pct() / 100;
             self.resources.apply_delta(&ResourceDelta { food: harvest, ..Default::default() });
-            lines.push("The farm brings in the harvest.".to_string());
+            lines.push(if harvest < raw {
+                "The farm brings in a lean harvest.".to_string()
+            } else if harvest > raw {
+                "The farm brings in a heavy harvest.".to_string()
+            } else {
+                "The farm brings in the harvest.".to_string()
+            });
         }
 
         // Spoilage: grain rots beyond what the stores can keep dry — the

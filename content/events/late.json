@@ -35,6 +35,7 @@
     "description": "Snow buries the roads. Nothing grows; nothing moves.",
     "tags": ["disaster"],
     "min_day": 16,
+    "requires_season": "winter",
     "weight": 1.1,
     "choices": [
       {

@@ -114,6 +114,11 @@ pub fn eligible_events<'a>(
                 && e.requires_upgrade.is_none_or(|u| gs.fortress.has_upgrade(u))
                 && e.min_darkness.is_none_or(|d| gs.region.darkness >= d)
                 && e.max_darkness.is_none_or(|d| gs.region.darkness <= d)
+                // seasonal one-shots fire only in their real season
+                && e.requires_season.is_none_or(|s| crate::world::Season::for_day(day) == s)
+                // once the whole region has fallen, no envoy, caravan, or lord
+                // takes the road — the outside world is gone until it rebuilds
+                && !(gs.region.all_fallen() && needs_outside_world(e))
                 // story flags: every required flag set, no forbidden flag set
                 && e.requires_flags.iter().all(|f| gs.flags.contains(f))
                 && !e.forbids_flags.iter().any(|f| gs.flags.contains(f))
@@ -123,6 +128,12 @@ pub fn eligible_events<'a>(
                 && last_event_name != Some(e.name.as_str())
         })
         .collect()
+}
+
+/// Events that presume a living realm beyond the walls — trade, envoys, lords.
+/// When every site has fallen there is no one left out there to send them.
+fn needs_outside_world(event: &Event) -> bool {
+    event.has_tag("diplomacy") || event.has_tag("trade")
 }
 
 /// True if any choice proposes raising a building the fortress already has.

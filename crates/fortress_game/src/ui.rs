@@ -254,9 +254,10 @@ fn update_hud_text(game: Res<Game>, mut query: Query<&mut Text, With<HudText>>) 
     let filled = (dark / 10) as usize;
     let gauge = format!("{}{}", "█".repeat(filled), "░".repeat(10 - filled));
     **t = format!(
-        "Day {} — {}  |  Morale {}  Def {}  |  Pop {}/{}  |  {}  |  Dark {} {} ({})",
+        "Day {} — {}  |  {}  |  Morale {}  Def {}  |  Pop {}/{}  |  {}  |  Dark {} {} ({})",
         gs.fortress.day,
         gs.fortress.name,
+        gs.world.describe(),
         gs.fortress.morale,
         gs.fortress.defense,
         gs.inhabitants.count_alive(),

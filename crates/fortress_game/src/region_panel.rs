@@ -54,6 +54,7 @@ fn site_glyph(kind: SiteKind) -> char {
         SiteKind::Fortress => '@',
         SiteKind::MercCompany => '%',
         SiteKind::AdventurerBand => '&',
+        SiteKind::Survivors => '+',
     }
 }
 
@@ -109,11 +110,19 @@ fn spawn_panel(mut commands: Commands, game: Res<Game>) {
 
 fn region_summary(panel: &mut ChildSpawnerCommands, gs: &GameState) {
     let r = &gs.region;
+    panel.spawn(text(format!("season: {}", gs.world.describe()), 14.0, ACCENT));
     panel.spawn(text(
         format!("darkness  {}  {}  ({})", meter(r.darkness), r.darkness, r.band().name()),
         15.0,
         band_color(if r.darkness >= 50 { "failing" } else { "holding" }),
     ));
+    if r.all_fallen() {
+        panel.spawn(text(
+            "The region has fallen. Watch for survivors regrouping from the ruin.",
+            13.0,
+            band_color("besieged"),
+        ));
+    }
     panel.spawn(text(
         format!(
             "portal pressure: {}   ·   sites standing: {}",

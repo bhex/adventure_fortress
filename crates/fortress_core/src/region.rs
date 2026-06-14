@@ -17,6 +17,9 @@ pub enum SiteKind {
     Fortress,
     MercCompany,
     AdventurerBand,
+    /// A camp of survivors regrouping after the region fell — the seed of a
+    /// rebuilt world. Fragile, but it can grow back into a proper hold.
+    Survivors,
 }
 
 impl SiteKind {
@@ -26,6 +29,7 @@ impl SiteKind {
             SiteKind::Fortress => "fortress",
             SiteKind::MercCompany => "mercenary company",
             SiteKind::AdventurerBand => "adventurer band",
+            SiteKind::Survivors => "survivor camp",
         }
     }
 }
@@ -85,6 +89,7 @@ const MERC_NAMES: [&str; 4] =
     ["the Iron Pact", "the Crowfeather Company", "the Sundered Shields", "the Ashen Banner"];
 const BAND_NAMES: [&str; 4] =
     ["the Lantern Bearers", "the Greenwood Five", "the Oathbound", "the Last Toast"];
+const SURVIVOR_NAMES: [&str; 4] = ["Hopewell", "the Ashfields", "New Vell", "Candlemarsh"];
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Region {
@@ -115,6 +120,7 @@ impl Region {
                 SiteKind::Fortress => &FORT_NAMES,
                 SiteKind::MercCompany => &MERC_NAMES,
                 SiteKind::AdventurerBand => &BAND_NAMES,
+                SiteKind::Survivors => &SURVIVOR_NAMES,
             };
             let name = pool[rng.random_range(0..pool.len())].to_string();
             if sites.iter().any(|s: &Site| s.name == name) {
@@ -124,7 +130,7 @@ impl Region {
                 SiteKind::City => rng.random_range(10..=14),
                 SiteKind::Fortress => rng.random_range(8..=12),
                 SiteKind::MercCompany => rng.random_range(5..=9),
-                SiteKind::AdventurerBand => rng.random_range(4..=7),
+                SiteKind::AdventurerBand | SiteKind::Survivors => rng.random_range(4..=7),
             };
             sites.push(Site { name, kind, strength });
         }
@@ -149,6 +155,11 @@ impl Region {
         self.sites.len()
     }
 
+    /// The whole region has gone dark — nothing free is left out there.
+    pub fn all_fallen(&self) -> bool {
+        self.sites.is_empty()
+    }
+
     /// Whether survivors of fallen sites are still on the road to the gates.
     pub fn refugees_incoming(&self) -> bool {
         self.refugee_wave_days > 0
@@ -168,6 +179,37 @@ impl Region {
         let push = self.portal_pressure + rng.random_range(-2..=2);
         let resist = self.total_strength() / 20;
         self.darkness = (self.darkness + push - resist).clamp(0, 100);
+
+        // The world end-state: with every site fallen, the war beyond the walls
+        // is over — but life is stubborn. As the dark eases, survivors regroup
+        // into a fragile camp that can grow back into a hold (and resume sending
+        // aid, envoys, and trade), so the late game stays coherent.
+        if self.sites.is_empty() {
+            if self.darkness < 80 && rng.random_range(0..100) < 6 {
+                let name = SURVIVOR_NAMES[rng.random_range(0..SURVIVOR_NAMES.len())].to_string();
+                self.sites.push(Site {
+                    name: name.clone(),
+                    kind: SiteKind::Survivors,
+                    strength: rng.random_range(3..=5),
+                });
+                lines.push(format!(
+                    "Out of the ruin, survivors gather at {name} and begin to rebuild."
+                ));
+            }
+            return lines; // nothing left to grind down this turn
+        }
+
+        // A standing survivor camp that weathers the storm can grow into a
+        // proper free hold once more.
+        for site in self.sites.iter_mut() {
+            if site.kind == SiteKind::Survivors
+                && self.darkness < 40
+                && site.strength < 8
+                && rng.random_range(0..100) < 20
+            {
+                site.strength += 1;
+            }
+        }
 
         // High darkness grinds the sites down.
         if self.darkness >= 50 && !self.sites.is_empty() {

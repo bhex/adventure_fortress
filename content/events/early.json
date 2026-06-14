@@ -91,6 +91,7 @@
     "tags": ["economy"],
     "min_day": 2,
     "requires_role": "farmer",
+    "requires_season": "autumn",
     "choices": [
       {
         "label": "Store it all",
@@ -272,7 +273,7 @@
     "description": "An early frost silvers the fields. The cold season is coming.",
     "tags": ["disaster"],
     "min_day": 5,
-    "max_day": 14,
+    "requires_season": "autumn",
     "choices": [
       {
         "label": "Harvest early",

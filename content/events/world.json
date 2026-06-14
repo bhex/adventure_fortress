@@ -4,7 +4,7 @@
     "description": "Meltwater turns the yard to mud, but the fields drink deep and the first green shows on the hills.",
     "tags": ["economy"],
     "min_day": 3,
-    "max_day": 20,
+    "requires_season": "spring",
     "weight": 0.7,
     "choices": [
       {
@@ -29,6 +29,7 @@
     "description": "Weeks without rain. The well sinks low and the crops stand brittle in the heat.",
     "tags": ["disaster"],
     "min_day": 10,
+    "requires_season": "summer",
     "weight": 0.8,
     "choices": [
       {
@@ -56,6 +57,7 @@
     "tags": ["economy"],
     "min_day": 8,
     "requires_role": "farmer",
+    "requires_season": "autumn",
     "weight": 0.7,
     "choices": [
       {
@@ -219,6 +221,7 @@
     "description": "A black squall walks across the hills, splitting the sky. Thatch smolders; the animals panic.",
     "tags": ["disaster"],
     "min_day": 4,
+    "requires_season": "summer",
     "weight": 0.7,
     "choices": [
       {

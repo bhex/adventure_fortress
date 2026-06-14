@@ -6,6 +6,7 @@ use crate::inhabitants::Role;
 use crate::items::{Enchant, ItemKind, Quality};
 use crate::player::StatKind;
 use crate::resources::ResourceDelta;
+use crate::world::Season;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "kind", content = "params", rename_all = "snake_case")]
@@ -117,6 +118,9 @@ pub struct Event {
     pub min_darkness: Option<i32>,
     #[serde(default)]
     pub max_darkness: Option<i32>,
+    /// Season gate: a seasonal one-shot fires only in its real season.
+    #[serde(default)]
+    pub requires_season: Option<Season>,
     #[serde(default)]
     pub tags: Vec<String>,
     /// Story gates: this event is eligible only when every `requires_flags`

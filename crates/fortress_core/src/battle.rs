@@ -257,6 +257,7 @@ fn side_strength(active: &[Combatant], gs: &GameState, morale_edge: i32) -> i32 
         StockBand::Plentiful => 4,
     };
     combat + weapons + gear + gs.fortress.defense / 10 + morale_edge
+        + gs.world.weather.combat_edge()
 }
 
 /// Pick the round's standout and tell what they did, coloured by the tide.

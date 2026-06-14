@@ -35,7 +35,8 @@ crates/fortress_core/         # pure, deterministic, fully tested
   inhabitants.rs  # Inhabitant list: Role + Trait enums, damage/heal/morale
   player.rs       # PlayerCharacter (the commander) + ClassKind
   skills.rs       # SkillSet: skills × tiers, xp-based growth
-  region.rs       # the darkness war: Sites, darkness 0-100, portal pressure, refugee waves
+  region.rs       # the darkness war: Sites, darkness 0-100, portal pressure, refugees, world end-state (survivor camps)
+  world.rs        # the turning year: Season + Weather, derived from (run_seed, day); farm/heating/morale/combat modifiers
   adventurers.rs  # heroes who arrive on renown/darkness
   battle.rs       # fight_battle -> multi-round, per-combatant, narrated BattleReport
   engine.rs       # roll() (quiet-day gate + eligibility), resolve(), apply_effect, mitigate_damage
@@ -55,6 +56,7 @@ Game loop: clock runs in real time → at dawn `engine::roll()` picks today's ev
 - **Items** (`items.rs`): the forge turns **ore** into typed quality items (`Fortress.craft_focus`), the Wizard Tower binds enchants with **residue** (dropped by demon battles), the best items auto-equip into combat/work via `equip_rating`, and items wear out unless the smith maintains them. Artifacts (rare, sometimes cursed) arrive via `Effect::GrantItem` event chains and never degrade.
 - **Combat** (`battle.rs`): resolves over up to `MAX_ROUNDS` rounds with swinging `momentum`; per-combatant actions (commander/heroes strike, casters bolt with Sorcery or blunt the foe with Warding, guards hold the line); a `BREACH_AT` momentum gates the gate-breach that throws non-combatant reserves to the wall. Weapons/armor/morale all feed prowess.
 - **Morale passive**: high morale (≥75) adds a combat edge and (≥80) a day's extra practice + faster job drift; `Effect::Morale` overflow above the 100 cap converts to permanent renown so it isn't wasted.
+- **Seasons & weather** (`world.rs`): `GameState.world` is recomputed each tick from `(run_seed, day)` — **never** via `gs.rng`, so it perturbs no other draw. Season (12-day quarters) and weather modulate farm yield, heating burn, morale, and combat (`side_strength`). Seasonal content events gate on `Event.requires_season`. **World end-state**: when `region.all_fallen()`, `diplomacy`/`trade` events are suppressed (no outside world) until survivors regroup into `SiteKind::Survivors` camps that can grow back.
 - **Daily tick**: building yields, food upkeep, starvation/sleep/morale cascades, skill training, craft/enchant/maintain, region tick, refugee/hero arrivals.
 
 ## Conventions
