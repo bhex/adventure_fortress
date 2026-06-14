@@ -78,7 +78,9 @@ fn building_rect(u: Upgrade) -> (IVec2, IVec2) {
         Upgrade::Lumberyard => (IVec2::new(4, 17), IVec2::new(6, 19)),
         Upgrade::Shrine => (IVec2::new(33, 9), IVec2::new(35, 11)),
         Upgrade::TrainingYard => (IVec2::new(33, 4), IVec2::new(35, 6)),
-        Upgrade::AdventurersGuild => (IVec2::new(25, 20), IVec2::new(28, 22)),
+        Upgrade::Mine => (IVec2::new(24, 20), IVec2::new(26, 22)),
+        Upgrade::Graveyard => (IVec2::new(33, 20), IVec2::new(35, 22)),
+        Upgrade::WizardTower => (IVec2::new(35, 12), IVec2::new(36, 14)),
         Upgrade::Housing => HOUSING_PLOT_RECTS[0], // plot picked per instance
     }
 }
@@ -91,13 +93,15 @@ pub fn building_glyph(u: Upgrade) -> (char, Color) {
         Upgrade::Infirmary => ('I', Color::srgb(0.9, 0.9, 0.95)),
         Upgrade::Barracks => ('K', Color::srgb(0.7, 0.3, 0.3)),
         Upgrade::Housing => ('H', Color::srgb(0.9, 0.7, 0.4)),
-        Upgrade::AdventurersGuild => ('A', Color::srgb(0.7, 0.4, 0.9)),
         Upgrade::Watchtower => ('T', Color::srgb(0.8, 0.8, 0.6)),
         Upgrade::Tavern => ('V', Color::srgb(0.95, 0.65, 0.3)),
         Upgrade::Workshop => ('W', Color::srgb(0.7, 0.6, 0.4)),
         Upgrade::Lumberyard => ('L', Color::srgb(0.55, 0.7, 0.3)),
         Upgrade::Shrine => ('S', Color::srgb(0.75, 0.85, 1.0)),
         Upgrade::TrainingYard => ('Y', Color::srgb(0.85, 0.45, 0.45)),
+        Upgrade::Mine => ('M', Color::srgb(0.6, 0.6, 0.65)),
+        Upgrade::Graveyard => ('t', Color::srgb(0.7, 0.72, 0.72)),
+        Upgrade::WizardTower => ('Z', Color::srgb(0.6, 0.4, 0.9)),
     }
 }
 

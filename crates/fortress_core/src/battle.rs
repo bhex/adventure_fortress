@@ -121,8 +121,10 @@ pub fn fight_battle(
         let died = apply_wound(gs, &target, wound);
         if died {
             lines.push(format!("{target} falls in the press."));
-            // a death in battle is felt across the hold
-            gs.fortress.apply_morale_delta(-3);
+            // a death in battle is felt across the hold — a Graveyard to honor
+            // the fallen eases the grief.
+            let grief = if gs.fortress.graveyard_level() > 0 { -1 } else { -3 };
+            gs.fortress.apply_morale_delta(grief);
             gs.apply_reputation_delta(-1);
             mortals.remove(idx);
         } else {

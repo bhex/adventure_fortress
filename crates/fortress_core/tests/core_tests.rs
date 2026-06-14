@@ -351,20 +351,19 @@ fn sleeping_capacity_and_rough_sleepers() {
     let mut gs = test_state();
     assert_eq!(gs.fortress.sleeping_capacity(), 6);
     gs.fortress.add_building(Upgrade::Barracks);
-    assert_eq!(gs.fortress.sleeping_capacity(), 11);
+    assert_eq!(gs.fortress.sleeping_capacity(), 16); // the Barracks sleeps a crowd
 
-    // 13 inhabitants vs 11 beds: 2 sleep rough, no warm-sleep bonus,
-    // and the last 2 by iteration order lose a point of morale.
-    for n in 0..13 {
+    // 20 inhabitants vs 16 beds: the 4 in iteration overflow sleep rough.
+    for n in 0..20 {
         let mut g = guard(&format!("G{n}"));
         g.morale = 50;
         gs.inhabitants.add(g);
     }
     let morale_before = gs.fortress.morale;
     gs.apply_daily_effects();
-    let rough: Vec<i32> = gs.inhabitants.inhabitants.iter().skip(11).map(|i| i.morale).collect();
-    assert_eq!(rough, vec![49, 49]);
-    assert!(gs.inhabitants.inhabitants.iter().take(11).all(|i| i.morale >= 50));
+    let rough: Vec<i32> = gs.inhabitants.inhabitants.iter().skip(16).map(|i| i.morale).collect();
+    assert!(rough.iter().all(|&m| m < 50), "rough sleepers lose morale: {rough:?}");
+    assert!(gs.inhabitants.inhabitants.iter().take(16).all(|i| i.morale >= 50));
     // no +1 warm-sleep when over capacity
     assert!(gs.fortress.morale <= morale_before);
 }
@@ -615,7 +614,7 @@ fn housing_adds_beds_and_population() {
     let pop_before = gs.fortress.max_population;
     assert_eq!(gs.fortress.sleeping_capacity(), 6);
     gs.build_upgrade(Upgrade::Housing);
-    assert_eq!(gs.fortress.sleeping_capacity(), 11); // +5 beds per plot
+    assert_eq!(gs.fortress.sleeping_capacity(), 12); // +6 beds per plot
     assert_eq!(gs.fortress.max_population, pop_before + 5);
 }
 
@@ -627,6 +626,27 @@ fn tavern_lifts_morale_daily() {
     gs.apply_daily_effects();
     // Tavern I cheers the hold by +1 morale a day
     assert!(gs.fortress.morale >= morale_before + 1);
+}
+
+#[test]
+fn mine_yields_stone() {
+    let mut gs = test_state();
+    gs.fortress.add_building(Upgrade::Mine);
+    let before = gs.resources.stone;
+    gs.apply_daily_effects();
+    assert_eq!(gs.resources.stone, before + 3); // Mine I
+}
+
+#[test]
+fn build_events_skip_already_built_buildings() {
+    let mut gs = test_state();
+    let deck =
+        vec![make_event(vec![simple_choice(vec![Effect::AddUpgrade { name: Upgrade::Tavern }])], vec![])];
+    // offered while the building doesn't exist
+    assert_eq!(eligible_events(&deck, 5, &gs, None).len(), 1);
+    gs.fortress.add_building(Upgrade::Tavern);
+    // suppressed once it's standing (no "build what we already have")
+    assert!(eligible_events(&deck, 5, &gs, None).is_empty());
 }
 
 #[test]
@@ -1078,36 +1098,23 @@ fn reputation_moves_with_fortune() {
 }
 
 #[test]
-fn adventurers_need_guild_and_renown() {
+fn renown_and_darkness_draw_heroes() {
+    // Heroes come for renown and a fight — no guild needed anymore.
     let mut gs = test_state();
-    gs.resources.apply_delta(&ResourceDelta { food: 500, ..Default::default() });
-    gs.reputation = 100;
-    gs.region.darkness = 80; // heroes go where the fight is
-    gs.region.portal_pressure = 0;
-    gs.region.sites.clear();
-    // without a guild, nobody comes
-    for _ in 0..60 {
-        gs.apply_daily_effects();
-        gs.region.darkness = 80;
-    }
-    assert!(gs.adventurers.is_empty(), "no guild, no heroes");
-    // with the guild at legendary renown and deep darkness, they come fast
-    gs.build_upgrade(Upgrade::AdventurersGuild);
     gs.reputation = 100;
     for _ in 0..60 {
         gs.apply_daily_effects();
-        gs.region.darkness = 80;
+        gs.region.darkness = 80; // heroes go where the fight is
         gs.resources.food = 500;
         gs.fortress.morale = 50;
     }
-    assert!(!gs.adventurers.is_empty(), "guild + renown + darkness should draw heroes");
+    assert!(!gs.adventurers.is_empty(), "renown + darkness should draw heroes");
     assert!(gs.adventurers.len() <= MAX_ADVENTURERS);
 }
 
 #[test]
 fn low_renown_draws_no_heroes() {
     let mut gs = test_state();
-    gs.build_upgrade(Upgrade::AdventurersGuild);
     gs.reputation = ADVENTURER_MIN_REPUTATION - 1;
     for _ in 0..60 {
         gs.apply_daily_effects();

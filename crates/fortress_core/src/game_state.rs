@@ -200,7 +200,7 @@ impl GameState {
                 // The deeper the dark, the likelier a refugee is something else
                 // wearing a refugee's face — a spy that bides, then betrays.
                 let infiltrate_chance = (self.region.darkness - 30).max(0) / 3; // 0..~23%
-                if (self.rng.random_range(0..100) as i32) < infiltrate_chance {
+                if self.rng.random_range(0..100) < infiltrate_chance {
                     refugee.traits.push(crate::inhabitants::Trait::Infiltrator);
                 }
                 lines.push(format!(
@@ -216,14 +216,13 @@ impl GameState {
             }
         }
 
-        // Adventurers: heroes seek a guild, a name worth the road — and a fight.
-        // The deeper the darkness, the more of them come looking for it.
-        // The guild's tier sets how many heroes it can host.
-        let hero_cap = match self.fortress.building_level(Upgrade::AdventurersGuild) {
-            0 => 0,
-            1 => 2,
-            2 => 3,
-            _ => MAX_ADVENTURERS,
+        // Heroes seek a name worth the road — and a fight. Renown alone draws
+        // them now (no guild needed); the deeper the dark, the more come.
+        let hero_cap = match self.reputation {
+            r if r >= 80 => MAX_ADVENTURERS,
+            r if r >= 55 => 3,
+            r if r >= 35 => 2,
+            _ => 1,
         };
         if self.reputation >= ADVENTURER_MIN_REPUTATION && self.adventurers.len() < hero_cap {
             let mut chance = self.reputation; // per-mille
@@ -405,6 +404,24 @@ impl GameState {
         };
         if yard_wood > 0 {
             self.resources.apply_delta(&ResourceDelta { wood: yard_wood, ..Default::default() });
+        }
+
+        // The Mine answers the one shortage you can't trade away: stone (and a
+        // little raw metal for the forge).
+        let mine_level = self.fortress.building_level(Upgrade::Mine);
+        if mine_level > 0 {
+            let stone = [0, 3, 5, 8][mine_level.min(3) as usize];
+            let gear = [0, 1, 1, 2][mine_level.min(3) as usize];
+            self.resources.apply_delta(&ResourceDelta { stone, gear, ..Default::default() });
+        }
+
+        // Night fires: the hold burns timber for warmth and light. A real cost
+        // once the woodpile matters; nothing burns if there's nothing to burn.
+        let pop = self.inhabitants.count_alive() as i64;
+        let firewood = if pop > 0 { (pop / 6).max(1) } else { 0 };
+        if firewood > 0 && self.resources.wood > 0 {
+            let burned = firewood.min(self.resources.wood);
+            self.resources.apply_delta(&ResourceDelta { wood: -burned, ..Default::default() });
         }
 
         let farm_level = self.fortress.building_level(Upgrade::Farm);

@@ -35,7 +35,7 @@ impl Plugin for CharCreatePlugin {
 
 /// Founding charter: one building the realm grants the new commander for free.
 const FOUNDING_CHOICES: [Upgrade; 4] =
-    [Upgrade::Watchtower, Upgrade::Barracks, Upgrade::Housing, Upgrade::AdventurersGuild];
+    [Upgrade::Watchtower, Upgrade::Barracks, Upgrade::Housing, Upgrade::WizardTower];
 
 #[derive(Resource)]
 struct Draft {

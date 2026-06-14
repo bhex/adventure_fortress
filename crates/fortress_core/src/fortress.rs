@@ -12,12 +12,14 @@ pub enum Upgrade {
     Granary,
     Barracks,
     Housing,
-    AdventurersGuild,
     Tavern,
     Workshop,
     Lumberyard,
     Shrine,
     TrainingYard,
+    Mine,
+    Graveyard,
+    WizardTower,
 }
 
 /// Buildings rise once and are then raised through tiers (I → II → III).
@@ -26,7 +28,7 @@ pub const MAX_BUILDING_LEVEL: u8 = 3;
 pub const HOUSING_PLOTS: usize = 4;
 
 impl Upgrade {
-    pub const ALL: [Upgrade; 13] = [
+    pub const ALL: [Upgrade; 15] = [
         Upgrade::Watchtower,
         Upgrade::Farm,
         Upgrade::Infirmary,
@@ -34,12 +36,14 @@ impl Upgrade {
         Upgrade::Granary,
         Upgrade::Barracks,
         Upgrade::Housing,
-        Upgrade::AdventurersGuild,
         Upgrade::Tavern,
         Upgrade::Workshop,
         Upgrade::Lumberyard,
         Upgrade::Shrine,
         Upgrade::TrainingYard,
+        Upgrade::Mine,
+        Upgrade::Graveyard,
+        Upgrade::WizardTower,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -51,12 +55,14 @@ impl Upgrade {
             Upgrade::Granary => "Granary",
             Upgrade::Barracks => "Barracks",
             Upgrade::Housing => "Housing",
-            Upgrade::AdventurersGuild => "Adventurers' Guild",
             Upgrade::Tavern => "Tavern",
             Upgrade::Workshop => "Workshop",
             Upgrade::Lumberyard => "Lumberyard",
             Upgrade::Shrine => "Shrine",
             Upgrade::TrainingYard => "Training Yard",
+            Upgrade::Mine => "Mine",
+            Upgrade::Graveyard => "Graveyard",
+            Upgrade::WizardTower => "Wizard Tower",
         }
     }
 
@@ -71,12 +77,14 @@ impl Upgrade {
             Upgrade::Granary => (0, 8, 12),
             Upgrade::Barracks => (0, 12, 12),
             Upgrade::Housing => (6, 14, 6),
-            Upgrade::AdventurersGuild => (0, 16, 10),
             Upgrade::Tavern => (4, 12, 4),
             Upgrade::Workshop => (0, 12, 6),
             Upgrade::Lumberyard => (0, 6, 8),
             Upgrade::Shrine => (0, 6, 12),
             Upgrade::TrainingYard => (0, 10, 6),
+            Upgrade::Mine => (0, 14, 6),
+            Upgrade::Graveyard => (0, 4, 10),
+            Upgrade::WizardTower => (0, 12, 16),
         };
         let (num, den): (i64, i64) = match level {
             0 | 1 => (1, 1),
@@ -97,9 +105,34 @@ impl Upgrade {
             Upgrade::Watchtower
             | Upgrade::Granary
             | Upgrade::Housing
-            | Upgrade::AdventurersGuild
             | Upgrade::Tavern
-            | Upgrade::Workshop => None,
+            | Upgrade::Workshop
+            | Upgrade::Mine
+            | Upgrade::Graveyard
+            | Upgrade::WizardTower => None,
+        }
+    }
+
+    /// A one-line summary of what this building does at a given level — used by
+    /// the build menu and inspect panel. Level 0 describes the first tier.
+    pub fn effect_summary(&self, level: u8) -> String {
+        let lvl = level.max(1);
+        match self {
+            Upgrade::Watchtower => format!("+{} defense", [5, 8, 12][(lvl - 1).min(2) as usize]),
+            Upgrade::Farm => format!("+{} food/day", [3, 5, 7][(lvl - 1).min(2) as usize]),
+            Upgrade::Infirmary => "heals the wounded; disasters hit softer".to_string(),
+            Upgrade::Blacksmith => "forges gear from smithing skill".to_string(),
+            Upgrade::Granary => format!("food cap {}", [60, 90, 130][(lvl - 1).min(2) as usize]),
+            Upgrade::Barracks => "bunks for many guards; +defense".to_string(),
+            Upgrade::Housing => "+5 beds, +5 max population".to_string(),
+            Upgrade::Tavern => format!("+{} morale/day", lvl.min(3)),
+            Upgrade::Workshop => "tools; trains crafting at II+".to_string(),
+            Upgrade::Lumberyard => format!("+{} wood/day", [2, 3, 5][(lvl - 1).min(2) as usize]),
+            Upgrade::Shrine => "softens demon dread".to_string(),
+            Upgrade::TrainingYard => "drills the guard's combat".to_string(),
+            Upgrade::Mine => format!("+{} stone/day", [3, 5, 8][(lvl - 1).min(2) as usize]),
+            Upgrade::Graveyard => "honors the dead; eases grief".to_string(),
+            Upgrade::WizardTower => "a seat for magic; enchanting".to_string(),
         }
     }
 }
@@ -213,15 +246,28 @@ impl Fortress {
     /// Beds available: the Keep sleeps 6; the Barracks bunks grow with its
     /// tier; every housing plot shelters 5. Overflow sleeps rough.
     pub fn sleeping_capacity(&self) -> u32 {
-        let mut beds = 6;
+        let mut beds = 6; // the Keep's own beds
+        // The Barracks is built for numbers — plain bunks, but it sleeps a crowd.
         beds += match self.building_level(Upgrade::Barracks) {
             0 => 0,
-            1 => 5,
-            2 => 8,
-            _ => 12,
+            1 => 10,
+            2 => 16,
+            _ => 24,
         };
-        beds += self.housing_units() as u32 * 5;
+        beds += self.housing_units() as u32 * 6;
+        // Every other standing building keeps a few cots for its workers.
+        let workshops = self
+            .buildings
+            .iter()
+            .filter(|b| b.kind != Upgrade::Barracks && b.kind != Upgrade::Housing)
+            .count() as u32;
+        beds += workshops * 2;
         beds
+    }
+
+    /// How many of the dead the Graveyard can honor — eases the morale of loss.
+    pub fn graveyard_level(&self) -> u8 {
+        self.building_level(Upgrade::Graveyard)
     }
 
     pub fn is_defeated(&self) -> bool {

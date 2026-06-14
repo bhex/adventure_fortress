@@ -123,8 +123,41 @@ fn spawn_menu_ui(commands: &mut Commands, gs: &GameState) {
                             button.insert(Disabled);
                         }
                         let label_color = if enabled { Color::WHITE } else { TEXT_DIM };
+
+                        // effect line: current → next; plus what's missing if poor
+                        let cur_level = gs.fortress.building_level(upgrade);
+                        let effect_line = if availability == BuildAvailability::MaxLevel {
+                            format!("now: {}", upgrade.effect_summary(cur_level))
+                        } else if cur_level == 0 {
+                            format!("gives: {}", upgrade.effect_summary(next))
+                        } else {
+                            format!(
+                                "now: {}  →  next: {}",
+                                upgrade.effect_summary(cur_level),
+                                upgrade.effect_summary(next)
+                            )
+                        };
+                        let detail = if availability == BuildAvailability::CantAfford {
+                            let cost = upgrade.build_cost(next);
+                            let r = &gs.resources;
+                            let mut miss = Vec::new();
+                            if cost.wood > r.wood {
+                                miss.push(format!("{} wood", cost.wood - r.wood));
+                            }
+                            if cost.stone > r.stone {
+                                miss.push(format!("{} stone", cost.stone - r.stone));
+                            }
+                            if cost.food > r.food {
+                                miss.push(format!("{} food", cost.food - r.food));
+                            }
+                            format!("{}  ·  missing {}", effect_line, miss.join(", "))
+                        } else {
+                            effect_line
+                        };
+
                         button.with_children(|b| {
                             b.spawn(text(format!("{}{}{}", upgrade.name(), standing, suffix), 16.0, label_color));
+                            b.spawn(text(detail, 12.0, TEXT_DIM));
                         });
                     }
 

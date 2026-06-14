@@ -107,9 +107,21 @@ pub fn eligible_events<'a>(
                 // story flags: every required flag set, no forbidden flag set
                 && e.requires_flags.iter().all(|f| gs.flags.contains(f))
                 && !e.forbids_flags.iter().any(|f| gs.flags.contains(f))
+                // don't offer to "build" something the fortress already has —
+                // these one-shots are framed as raising a new building.
+                && !offers_existing_building(e, gs)
                 && last_event_name != Some(e.name.as_str())
         })
         .collect()
+}
+
+/// True if any choice proposes raising a building the fortress already has.
+fn offers_existing_building(event: &Event, gs: &GameState) -> bool {
+    event.choices.iter().any(|c| {
+        c.effects
+            .iter()
+            .any(|e| matches!(e, Effect::AddUpgrade { name } if gs.fortress.has_upgrade(*name)))
+    })
 }
 
 pub fn roll<'a>(

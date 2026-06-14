@@ -317,14 +317,14 @@ fn upgrade_blurb(u: Upgrade) -> &'static str {
         Upgrade::Granary => "Granary\nSafer stores. Trade caravans now\nseek out the fortress.",
         Upgrade::Barracks => "Barracks\n+max population & defense.\nMore bunks for guards each tier.",
         Upgrade::Housing => "Housing\n+5 max population, +5 beds per plot.\nUp to four plots line the gate road.",
-        Upgrade::AdventurersGuild => {
-            "Adventurers' Guild\nWord spreads. Heroes will seek\nout a fortress of renown."
-        }
         Upgrade::Tavern => "Tavern\nDrink and song. Lifts morale\nmore with every tier.",
         Upgrade::Workshop => "Workshop\nTools and tinkering. Trains\nCrafting once raised to II.",
         Upgrade::Lumberyard => "Lumberyard\nFelled timber stacked high —\nwood every day, more each tier.",
         Upgrade::Shrine => "Shrine\nFaith against the dark. Softens\ndemon dread, more each tier.",
         Upgrade::TrainingYard => "Training Yard\nDrill and spar. Guards earn\nCombat practice every day.",
+        Upgrade::Mine => "Mine\nStone every day — and a little raw\nmetal for the forge.",
+        Upgrade::Graveyard => "Graveyard\nThe dead are honored here; grief\nweighs lighter on the living.",
+        Upgrade::WizardTower => "Wizard Tower\nA seat for the arcane: enchanting\nand stranger work to come.",
     }
 }
 
