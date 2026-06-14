@@ -8,13 +8,14 @@ use crate::engine::train_role;
 use crate::fortress::{level_numeral, BuildOutcome, Fortress, Upgrade};
 use crate::region::DarknessBand;
 use crate::inhabitants::{generate_inhabitant, InhabitantManager, Role, Trait};
+use crate::items::{Enchant, Item, ItemKind, ItemStock, Quality};
 use crate::player::{ClassKind, PlayerCharacter};
 use crate::region::Region;
 use crate::resources::{ResourceDelta, Resources};
 use crate::rng::GameRng;
 use crate::skills::Skill;
 
-pub const SAVE_VERSION: u32 = 7;
+pub const SAVE_VERSION: u32 = 8;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 
@@ -58,6 +59,9 @@ pub struct GameState {
     /// deterministic-run guarantee depends on it.
     #[serde(default)]
     pub flags: BTreeSet<String>,
+    /// The armory of typed, quality-graded items — see `items`.
+    #[serde(default)]
+    pub items: ItemStock,
 }
 
 /// Most heroes a fortress can host at once.
@@ -82,6 +86,7 @@ impl GameState {
             reputation: 10,
             adventurers: Vec::new(),
             flags: BTreeSet::new(),
+            items: ItemStock::default(),
         }
     }
 
@@ -406,14 +411,18 @@ impl GameState {
             self.resources.apply_delta(&ResourceDelta { wood: yard_wood, ..Default::default() });
         }
 
-        // The Mine answers the one shortage you can't trade away: stone (and a
-        // little raw metal for the forge).
+        // The Mine answers the one shortage you can't trade away: stone — and
+        // raw ore, the feedstock the forge turns into proper arms and armor.
         let mine_level = self.fortress.building_level(Upgrade::Mine);
         if mine_level > 0 {
             let stone = [0, 3, 5, 8][mine_level.min(3) as usize];
-            let gear = [0, 1, 1, 2][mine_level.min(3) as usize];
-            self.resources.apply_delta(&ResourceDelta { stone, gear, ..Default::default() });
+            let ore = [0, 2, 3, 5][mine_level.min(3) as usize];
+            self.resources.apply_delta(&ResourceDelta { stone, ore, ..Default::default() });
         }
+
+        // The forge works ore into real equipment, keeps the armory in trim,
+        // and the Wizard Tower binds enchantments — the whole item economy.
+        lines.extend(self.craft_and_maintain());
 
         // Night fires: the hold burns timber for warmth and light. A real cost
         // once the woodpile matters; nothing burns if there's nothing to burn.
@@ -438,12 +447,16 @@ impl GameState {
                 .map(|i| i.skills.tier(Skill::Farming).index())
                 .sum::<u32>()
                 / 2;
-            let tool_bonus: i64 =
+            let mut tool_bonus: i64 =
                 if self.resources.band(crate::resources::ResourceKind::Tools) >= crate::resources::StockBand::Adequate {
                     1
                 } else {
                     0
                 };
+            // Proper tools in hand work the field harder still.
+            if self.items.best_rating(ItemKind::Tool) >= 3 {
+                tool_bonus += 1;
+            }
             let harvest = base + skill_bonus as i64 + tool_bonus;
             self.resources.apply_delta(&ResourceDelta { food: harvest, ..Default::default() });
             lines.push("The farm brings in the harvest.".to_string());
@@ -561,6 +574,88 @@ impl GameState {
             if player.class == ClassKind::Mystic && avg >= 50 {
                 self.fortress.apply_morale_delta(1);
             }
+        }
+
+        lines
+    }
+
+    /// Whether any living soul (commander or inhabitant) can work magic — the
+    /// gate on enchanting at the Wizard Tower.
+    fn has_mage(&self) -> bool {
+        let commander_mage = self.player.as_ref().is_some_and(|p| {
+            p.is_alive() && Skill::MAGIC.iter().any(|s| p.skills.xp(*s) >= 20)
+        });
+        commander_mage
+            || self
+                .inhabitants
+                .get_alive()
+                .iter()
+                .any(|i| Skill::MAGIC.iter().any(|s| i.skills.xp(*s) >= 20))
+    }
+
+    /// The whole item economy for a day: the forge works ore into equipment,
+    /// the Wizard Tower binds enchantments, the smith keeps the armory in trim,
+    /// and everything in use wears a little. Returns log lines.
+    fn craft_and_maintain(&mut self) -> Vec<String> {
+        const ORE_PER_ITEM: i64 = 3;
+        const RESIDUE_PER_ENCHANT: i64 = 3;
+        const ARMORY_CAP: usize = 40;
+        let mut lines = Vec::new();
+
+        // ---- forge: ore -> a typed item, quality from the best smith on hand ----
+        let smithy_level = self.fortress.building_level(Upgrade::Blacksmith);
+        if smithy_level > 0 && self.resources.ore >= ORE_PER_ITEM && self.items.count() < ARMORY_CAP
+        {
+            let smith_tier = self
+                .inhabitants
+                .get_by_role(Role::Blacksmith)
+                .iter()
+                .map(|i| i.skills.tier(Skill::Smithing).index())
+                .max();
+            if let Some(tier) = smith_tier {
+                let mut quality = Quality::from_smith_tier(tier);
+                // A proficient smith now and then turns out something better
+                // than their wont — a masterwork off a good day at the anvil.
+                if tier >= 4 && self.rng.random_range(0..100) < 15 {
+                    let idx = (quality.index() + 1).min(Quality::Masterwork.index()) as usize;
+                    quality = Quality::ALL[idx];
+                }
+                let kind = self.fortress.craft_focus;
+                self.resources.apply_delta(&ResourceDelta { ore: -ORE_PER_ITEM, ..Default::default() });
+                let item = Item::new(kind, quality);
+                lines.push(format!("The forge yields a {}.", item.label()));
+                self.items.add(item);
+            }
+        }
+
+        // ---- Wizard Tower: residue binds an enchantment to the best plain item ----
+        if self.fortress.building_level(Upgrade::WizardTower) > 0
+            && self.resources.residue >= RESIDUE_PER_ENCHANT
+            && self.has_mage()
+        {
+            if let Some(idx) = self.items.best_unenchanted_index() {
+                let kind = self.items.items[idx].kind;
+                let enchant = Enchant::for_kind(kind);
+                self.items.items[idx].enchant = Some(enchant);
+                self.resources
+                    .apply_delta(&ResourceDelta { residue: -RESIDUE_PER_ENCHANT, ..Default::default() });
+                lines.push(format!(
+                    "At the Wizard Tower, residue is worked into a {} — now {}.",
+                    kind.noun(),
+                    self.items.items[idx].label()
+                ));
+            }
+        }
+
+        // ---- the smith keeps the carried gear from falling apart ----
+        if smithy_level > 0 && self.inhabitants.has_role(Role::Blacksmith) {
+            self.items.maintain(smithy_level as usize, 20 + 10 * smithy_level as i32);
+        }
+
+        // ---- a day's wear: only the items actually in hand wear down ----
+        let slots = (self.inhabitants.count_alive() + usize::from(self.player.is_some())).max(1);
+        for label in self.items.degrade_in_use(slots, 2) {
+            lines.push(format!("A {label} is worn past use and scrapped."));
         }
 
         lines

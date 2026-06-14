@@ -78,6 +78,9 @@ pub fn fight_battle(
         StockBand::Comfortable => 3,
         StockBand::Plentiful => 4,
     };
+    // proper weapons in the racks: the best hands take the best blades.
+    let weapon_slots = usize::from(commander_fights) + guard_count + knights.len();
+    prowess += gs.items.equip_rating(crate::items::ItemKind::Weapon, weapon_slots);
     prowess += gs.fortress.defense / 10;
 
     // ---- the foe ----
@@ -153,6 +156,7 @@ pub fn fight_battle(
                 .apply_delta(&ResourceDelta { valuables: loot_valuables, ..Default::default() });
             lines.push(format!("The field is stripped of spoils. (+{loot_valuables} valuables)"));
         }
+        lines.extend(roll_loot(event, gs));
     } else {
         gs.fortress.apply_defense_delta(-3);
         gs.fortress.apply_morale_delta(-8);
@@ -164,6 +168,49 @@ pub fn fight_battle(
     }
 
     BattleReport { lines, victory }
+}
+
+/// What a beaten foe leaves on the field — keyed off the event's tags, the
+/// closest thing to a per-enemy loot table. Demons leave the residue that
+/// holds enchantments; raiders and the like leave usable arms now and then.
+fn roll_loot(event: &Event, gs: &mut GameState) -> Vec<String> {
+    let mut lines = Vec::new();
+    // Demon foes burn away into portal residue — the rarer the dark, the more.
+    if event.has_tag("demon") {
+        let mut amount = gs.rng.random_range(1..=3) as i64;
+        if matches!(gs.region.band(), DarknessBand::Deep | DarknessBand::Overwhelming) {
+            amount += 1;
+        }
+        gs.resources.apply_delta(&ResourceDelta { residue: amount, ..Default::default() });
+        lines.push(format!("The demons leave only smoking residue. (+{amount} residue)"));
+    }
+    // Mortal raiders drop their gear: usually scrap for the armory, sometimes a
+    // whole serviceable weapon or piece of armor worth keeping.
+    if event.has_tag("combat") && !event.has_tag("demon") {
+        if gs.rng.random_range(0..100) < 35 {
+            let kind = if gs.rng.random_range(0..2) == 0 {
+                crate::items::ItemKind::Weapon
+            } else {
+                crate::items::ItemKind::Armor
+            };
+            // battlefield finds are rough — crude or plain at best
+            let quality = if gs.rng.random_range(0..100) < 25 {
+                crate::items::Quality::Fine
+            } else if gs.rng.random_range(0..2) == 0 {
+                crate::items::Quality::Plain
+            } else {
+                crate::items::Quality::Crude
+            };
+            let item = crate::items::Item::new(kind, quality);
+            lines.push(format!("A {} is taken from the fallen.", item.label()));
+            gs.items.add(item);
+        } else {
+            let gear = gs.rng.random_range(2..=5);
+            gs.resources.apply_delta(&ResourceDelta { gear, ..Default::default() });
+            lines.push(format!("Broken arms are gathered for the smith. (+{gear} gear)"));
+        }
+    }
+    lines
 }
 
 /// Wound a named defender through the same `damage()` path everyone uses, so

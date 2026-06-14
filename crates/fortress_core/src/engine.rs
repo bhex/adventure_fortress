@@ -56,6 +56,16 @@ pub fn describe_effects(effects: &[crate::events::Effect]) -> String {
             }
             Effect::AddUpgrade { name } => format!("raise the {}", name.name()),
             Effect::Region { .. } => "shifts the war beyond the walls".to_string(),
+            Effect::GrantItem { artifact, name, .. } => {
+                if *artifact {
+                    match name {
+                        Some(n) => format!("the artifact {n}"),
+                        None => "an artifact for the armory".to_string(),
+                    }
+                } else {
+                    "an item for the armory".to_string()
+                }
+            }
             // story bookkeeping the player needn't see
             Effect::SetFlag { .. } | Effect::ClearFlag { .. } => String::new(),
         };
@@ -430,6 +440,24 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
             gs.flags.remove(flag);
         }
 
+        Effect::GrantItem { kind, quality, enchant, artifact, name } => {
+            let item = crate::items::Item {
+                kind: *kind,
+                quality: *quality,
+                enchant: *enchant,
+                condition: 100,
+                artifact: *artifact,
+                name: name.clone(),
+            };
+            let label = item.label();
+            gs.items.add(item);
+            result.lines.push(if *artifact {
+                format!("{label} — an artifact — comes into the fortress's keeping.")
+            } else {
+                format!("A {label} is added to the armory.")
+            });
+        }
+
         Effect::Region { darkness, site_strength, pressure } => {
             if *darkness != 0 {
                 gs.region.darkness = (gs.region.darkness + darkness).clamp(0, 100);
@@ -503,6 +531,10 @@ pub(crate) fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32
         if gs.resources.band(crate::resources::ResourceKind::Gear)
             >= crate::resources::StockBand::Adequate
         {
+            h = -((-h * 3) / 4);
+        }
+        // Proper armor in the racks: a fine harness (or better) turns a blow.
+        if gs.items.best_rating(crate::items::ItemKind::Armor) >= 3 {
             h = -((-h * 3) / 4);
         }
         // A Warlord commander steadies the line; mitigation scales with their

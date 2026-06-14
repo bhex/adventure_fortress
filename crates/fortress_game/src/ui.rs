@@ -364,6 +364,26 @@ fn building_inspect(game: &Game, u: Upgrade) -> String {
     s
 }
 
+/// A few lines on the armory: counts by kind, the focus the forge is set to,
+/// and a roll-call of the named artifacts the hold keeps.
+fn armory_summary(gs: &fortress_core::GameState) -> String {
+    use fortress_core::ItemKind;
+    if gs.items.count() == 0 {
+        return "  (empty)".to_string();
+    }
+    let mut lines: Vec<String> = ItemKind::ALL
+        .iter()
+        .map(|k| format!("  {}s: {}", k.name(), gs.items.count_kind(*k)))
+        .collect();
+    lines.push(format!("  forge focus: {}", gs.fortress.craft_focus.name()));
+    let artifacts: Vec<String> =
+        gs.items.items.iter().filter(|i| i.artifact).map(|i| i.label()).collect();
+    if !artifacts.is_empty() {
+        lines.push(format!("  artifacts: {}", artifacts.join(", ")));
+    }
+    lines.join("\n")
+}
+
 fn update_inspect(
     game: Res<Game>,
     selected: Res<Selected>,
@@ -382,10 +402,13 @@ fn update_inspect(
                 fortress_core::ResourceKind::Valuables,
                 fortress_core::ResourceKind::Gear,
                 fortress_core::ResourceKind::Tools,
+                fortress_core::ResourceKind::Ore,
+                fortress_core::ResourceKind::Residue,
             ]
             .iter()
             .map(|k| format!("{}: {}", k.name(), gs.resources.band(*k).name()))
             .collect();
+            let armory = armory_summary(gs);
             let renown = match gs.reputation {
                 0..=19 => "unknown",
                 20..=39 => "local",
@@ -411,10 +434,11 @@ fn update_inspect(
                     .join("\n")
             };
             format!(
-                "{}\n\n{}\nRenown: {}\n\nHeroes:\n{}\n\nClick an inhabitant or building\nto inspect it.",
+                "{}\n\n{}\nRenown: {}\n\nArmory:\n{}\n\nHeroes:\n{}\n\nClick an inhabitant or building\nto inspect it.",
                 commander,
                 stores.join("\n"),
                 renown,
+                armory,
                 heroes,
             )
         }

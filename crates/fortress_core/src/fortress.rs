@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::inhabitants::Role;
+use crate::items::ItemKind;
 use crate::resources::ResourceDelta;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -169,6 +170,13 @@ pub struct Fortress {
     pub defense: i32,
     pub max_population: u32,
     pub buildings: Vec<Building>,
+    /// What the forge concentrates on when ore is worked into items.
+    #[serde(default = "default_craft_focus")]
+    pub craft_focus: ItemKind,
+}
+
+fn default_craft_focus() -> ItemKind {
+    ItemKind::Weapon
 }
 
 impl Fortress {
@@ -180,6 +188,7 @@ impl Fortress {
             defense: 10,
             max_population: 20,
             buildings: Vec::new(),
+            craft_focus: default_craft_focus(),
         }
     }
 

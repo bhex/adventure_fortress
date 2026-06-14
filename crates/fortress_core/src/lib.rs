@@ -6,6 +6,7 @@ pub mod events;
 pub mod fortress;
 pub mod game_state;
 pub mod inhabitants;
+pub mod items;
 pub mod player;
 pub mod region;
 pub mod resources;
@@ -26,6 +27,7 @@ pub use game_state::{
     BuildAvailability, GameState, ADVENTURER_MIN_REPUTATION, MAX_ADVENTURERS, SAVE_VERSION,
 };
 pub use inhabitants::{generate_inhabitant, Inhabitant, InhabitantManager, Role, Trait};
+pub use items::{Enchant, Item, ItemKind, ItemStock, Quality};
 pub use player::{ClassKind, PlayerCharacter, StatKind, Stats};
 pub use region::{darkness_band, DarknessBand, Region, Site, SiteKind};
 pub use resources::{amount_phrase, band_for, ResourceDelta, ResourceKind, Resources, StockBand};

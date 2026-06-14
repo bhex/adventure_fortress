@@ -103,7 +103,7 @@ fn every_content_choice_resolves() {
         for idx in 0..event.choices.len() {
             let mut gs = GameState::new(1);
             gs.fortress.name = "T".to_string();
-            gs.resources.apply_delta(&ResourceDelta { food: 999, valuables: 999, stone: 999, wood: 999, gear: 999, tools: 999 });
+            gs.resources.apply_delta(&ResourceDelta { food: 999, valuables: 999, stone: 999, wood: 999, gear: 999, tools: 999, ..Default::default() });
             for role in Role::ALL {
                 gs.inhabitants.add(Inhabitant::new(&format!("T-{}", role.name()), role));
             }

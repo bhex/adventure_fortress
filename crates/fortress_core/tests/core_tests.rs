@@ -1170,3 +1170,201 @@ fn hero_perks_work_daily_and_train_by_use() {
     resolve_single(&mut gs, Effect::Morale { amount: 0 }, vec!["combat"]);
     assert_eq!(gs.adventurers[0].skills.xp(Skill::Combat), xp_before + 8);
 }
+
+// ----------------------------------------------------------------------
+// items: equipment, crafting, loot, artifacts
+// ----------------------------------------------------------------------
+
+fn smith(name: &str, smithing_xp: u32) -> Inhabitant {
+    let mut s = Inhabitant::new(name, Role::Blacksmith);
+    s.skills.train(Skill::Smithing, smithing_xp);
+    s
+}
+
+#[test]
+fn quality_tracks_smith_tier_and_rating_scales() {
+    assert_eq!(Quality::from_smith_tier(0), Quality::Crude);
+    assert_eq!(Quality::from_smith_tier(3), Quality::Plain);
+    assert_eq!(Quality::from_smith_tier(5), Quality::Fine);
+    assert_eq!(Quality::from_smith_tier(7), Quality::Masterwork);
+
+    // rating = quality+1, lifted by a helpful enchant, dropped by a curse
+    assert_eq!(Item::new(ItemKind::Weapon, Quality::Crude).rating(), 1);
+    assert_eq!(Item::new(ItemKind::Weapon, Quality::Masterwork).rating(), 4);
+    assert_eq!(
+        Item::enchanted(ItemKind::Weapon, Quality::Masterwork, Enchant::Keen).rating(),
+        6
+    );
+    assert_eq!(
+        Item::enchanted(ItemKind::Armor, Quality::Plain, Enchant::Hexed).rating(),
+        1 // (1+1) - 2, floored to 1 while whole
+    );
+}
+
+#[test]
+fn forge_works_ore_into_an_item() {
+    let mut gs = test_state();
+    gs.fortress.add_building(Upgrade::Blacksmith);
+    gs.inhabitants.add(smith("Smith", 140)); // Proficient -> Fine work
+    gs.resources.ore = 10;
+    gs.fortress.craft_focus = ItemKind::Armor;
+    gs.apply_daily_effects();
+    assert_eq!(gs.resources.ore, 7, "a forged item costs ore");
+    assert_eq!(gs.items.count_kind(ItemKind::Armor), 1);
+    assert!(gs.items.items[0].quality >= Quality::Fine, "a proficient smith makes fine work");
+}
+
+#[test]
+fn forge_idle_without_ore_or_smith() {
+    // a smithy with no ore makes nothing
+    let mut gs = test_state();
+    gs.fortress.add_building(Upgrade::Blacksmith);
+    gs.inhabitants.add(smith("Smith", 60));
+    gs.apply_daily_effects();
+    assert_eq!(gs.items.count(), 0);
+
+    // ore but no smithy makes nothing either
+    let mut gs2 = test_state();
+    gs2.resources.ore = 20;
+    gs2.apply_daily_effects();
+    assert_eq!(gs2.items.count(), 0);
+}
+
+#[test]
+fn fine_armor_turns_a_blow() {
+    let mut gs = test_state();
+    gs.inhabitants.add(guard("G"));
+    gs.items.add(Item::new(ItemKind::Armor, Quality::Fine)); // rating 3
+    resolve_single(
+        &mut gs,
+        Effect::ApplyToRole { role: Role::Guard, health: -20, morale: 0 },
+        vec!["combat"],
+    );
+    // one 25% step from the armor alone: -20 -> -15
+    assert_eq!(gs.inhabitants.get_by_role(Role::Guard)[0].health, 85);
+}
+
+#[test]
+fn good_blades_win_more_battles() {
+    let win = |seed: u64, arm: bool| {
+        let mut gs = GameState::new(seed);
+        gs.player = Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats::default()));
+        for n in 0..3 {
+            gs.inhabitants.add(guard(&format!("G{n}")));
+        }
+        if arm {
+            for _ in 0..4 {
+                gs.items.add(Item::new(ItemKind::Weapon, Quality::Masterwork));
+            }
+        }
+        fight_battle(14, 0, &battle_event(vec!["combat"]), &mut gs).victory
+    };
+    let bare = (0..200u64).filter(|s| win(*s, false)).count();
+    let armed = (0..200u64).filter(|s| win(*s, true)).count();
+    assert!(armed > bare, "masterwork weapons should win more fights: {armed} vs {bare}");
+}
+
+#[test]
+fn fine_tools_lift_the_harvest() {
+    let mut gs = test_state();
+    gs.resources.food = 30; // below the granary-less cap
+    gs.fortress.add_building(Upgrade::Farm);
+    gs.inhabitants.add(Inhabitant::new("F", Role::Farmer));
+    gs.items.add(Item::new(ItemKind::Tool, Quality::Fine)); // rating 3 -> +1 harvest
+    gs.apply_daily_effects();
+    // Farm I base 3 + tool 1 = 4, minus 1 upkeep
+    assert_eq!(gs.resources.food, 30 + 4 - 1);
+}
+
+#[test]
+fn wizard_tower_enchants_with_residue() {
+    let mut gs = test_state();
+    gs.fortress.add_building(Upgrade::WizardTower);
+    let mut mage = Inhabitant::new("Mage", Role::Peasant);
+    mage.skills.train(Skill::Sorcery, 40);
+    gs.inhabitants.add(mage);
+    gs.items.add(Item::new(ItemKind::Weapon, Quality::Plain));
+    gs.resources.residue = 5;
+    gs.apply_daily_effects();
+    assert_eq!(gs.resources.residue, 2, "binding an enchant spends residue");
+    assert!(gs.items.items[0].enchant.is_some(), "the item is now enchanted");
+}
+
+#[test]
+fn enchanting_needs_a_mage() {
+    let mut gs = test_state();
+    gs.fortress.add_building(Upgrade::WizardTower);
+    gs.inhabitants.add(guard("Mundane")); // no magic skill
+    gs.items.add(Item::new(ItemKind::Weapon, Quality::Plain));
+    gs.resources.residue = 5;
+    gs.apply_daily_effects();
+    assert_eq!(gs.resources.residue, 5, "no mage, no enchant, no spent residue");
+    assert!(gs.items.items[0].enchant.is_none());
+}
+
+#[test]
+fn worn_gear_breaks_but_the_smith_keeps_it_up() {
+    // with no smith, a near-spent item wears out and is scrapped
+    let mut gs = test_state();
+    let mut worn = Item::new(ItemKind::Weapon, Quality::Plain);
+    worn.condition = 2;
+    gs.items.add(worn);
+    gs.apply_daily_effects();
+    assert_eq!(gs.items.count(), 0, "the worn blade should break and be removed");
+
+    // a smithy with a smith repairs faster than the gear wears
+    let mut gs2 = test_state();
+    gs2.fortress.add_building(Upgrade::Blacksmith);
+    gs2.inhabitants.add(smith("Smith", 60));
+    let mut item = Item::new(ItemKind::Weapon, Quality::Plain);
+    item.condition = 50;
+    gs2.items.add(item);
+    gs2.apply_daily_effects();
+    assert!(gs2.items.items[0].condition > 50, "the smith keeps the armory in trim");
+}
+
+#[test]
+fn artifacts_never_wear_out() {
+    let mut art = Item {
+        kind: ItemKind::Weapon,
+        quality: Quality::Masterwork,
+        enchant: Some(Enchant::Keen),
+        condition: 100,
+        artifact: true,
+        name: Some("Dawnedge".to_string()),
+    };
+    let rating_before = art.rating();
+    art.degrade(500);
+    assert_eq!(art.condition, 100, "an artifact does not degrade");
+    assert!(!art.is_broken());
+    assert_eq!(art.rating(), rating_before);
+    assert_eq!(art.label(), "Dawnedge");
+}
+
+#[test]
+fn demon_battles_drop_residue() {
+    let mut gs = test_state();
+    gs.player = Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats { might: 8, wit: 3, heart: 3 }));
+    let mut vet = guard("Vet");
+    vet.skills.train(Skill::Combat, 300);
+    gs.inhabitants.add(vet);
+    let report = fight_battle(2, 0, &battle_event(vec!["combat", "demon"]), &mut gs);
+    assert!(report.victory);
+    assert!(gs.resources.residue >= 1, "a beaten demon leaves residue");
+}
+
+#[test]
+fn grant_item_effect_places_an_artifact() {
+    let mut gs = test_state();
+    let effect = Effect::GrantItem {
+        kind: ItemKind::Weapon,
+        quality: Quality::Masterwork,
+        enchant: Some(Enchant::Keen),
+        artifact: true,
+        name: Some("The Sunblade".to_string()),
+    };
+    resolve_single(&mut gs, effect, vec![]);
+    assert_eq!(gs.items.count(), 1);
+    assert!(gs.items.items[0].artifact);
+    assert_eq!(gs.items.items[0].label(), "The Sunblade");
+}

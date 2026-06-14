@@ -30,7 +30,8 @@ Two crates in a Cargo workspace:
 crates/fortress_core/         # pure, deterministic, fully tested
   game_state.rs   # owns rng, daily tick, save/load, win/loss, SAVE_VERSION
   fortress.rs     # day, morale, defense, buildings (Building{kind,level}), build costs
-  resources.rs    # food/valuables/wood/stone/gear/tools; numbers + adjective bands
+  resources.rs    # food/valuables/wood/stone/gear/tools/ore/residue; numbers + adjective bands
+  items.rs        # ItemStock: typed Item{kind,quality,enchant,condition,artifact}; auto-equip ratings
   inhabitants.rs  # Inhabitant list: Role + Trait enums, damage/heal/morale
   player.rs       # PlayerCharacter (the commander) + ClassKind
   skills.rs       # SkillSet: skills × tiers, xp-based growth
@@ -50,8 +51,9 @@ crates/fortress_game/         # Bevy front-end (untested by design)
 Game loop: clock runs in real time → at dawn `engine::roll()` picks today's event (or a quiet day) → fires at a random hour as a modal (or auto-resolves if `event.auto`) → `resolve()` pays cost and dispatches effects → at midnight `apply_daily_effects()` runs the daily tick and `advance_day()` + autosave. Defeat at morale 0 **or** if the commander falls.
 
 - **Events are pure data**; `engine::eligible_events` gates by day/morale/resources/role/upgrade/darkness and **story flags** (`requires_flags`/`forbids_flags`); `Effect::SetFlag`/`ClearFlag` drive multi-step arcs.
-- **Damage mitigation** is tag-driven (`engine::mitigate_damage`): `combat` softened by Blacksmith/skill/gear/class; `disaster` halved by Infirmary; `demon` scaled up by darkness and softened by the Shrine.
-- **Daily tick**: building yields, food upkeep, starvation/sleep/morale cascades, skill training, region tick, refugee/hero arrivals.
+- **Damage mitigation** is tag-driven (`engine::mitigate_damage`): `combat` softened by Blacksmith/skill/gear/armor-items/class; `disaster` halved by Infirmary; `demon` scaled up by darkness and softened by the Shrine.
+- **Items** (`items.rs`): the forge turns **ore** into typed quality items (`Fortress.craft_focus`), the Wizard Tower binds enchants with **residue** (dropped by demon battles), the best items auto-equip into combat/work via `equip_rating`, and items wear out unless the smith maintains them. Artifacts (rare, sometimes cursed) arrive via `Effect::GrantItem` event chains and never degrade.
+- **Daily tick**: building yields, food upkeep, starvation/sleep/morale cascades, skill training, craft/enchant/maintain, region tick, refugee/hero arrivals.
 
 ## Conventions
 

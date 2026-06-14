@@ -34,16 +34,23 @@ pub enum ResourceKind {
     Wood,
     Gear,
     Tools,
+    /// Raw metal from the Mine — the smith's feedstock for forging items.
+    Ore,
+    /// Demon/portal residue, dropped by demon battles — the only stuff that
+    /// will hold an enchantment at the Wizard Tower. Rare by nature.
+    Residue,
 }
 
 impl ResourceKind {
-    pub const ALL: [ResourceKind; 6] = [
+    pub const ALL: [ResourceKind; 8] = [
         ResourceKind::Food,
         ResourceKind::Valuables,
         ResourceKind::Stone,
         ResourceKind::Wood,
         ResourceKind::Gear,
         ResourceKind::Tools,
+        ResourceKind::Ore,
+        ResourceKind::Residue,
     ];
 
     pub fn name(&self) -> &'static str {
@@ -54,6 +61,8 @@ impl ResourceKind {
             ResourceKind::Wood => "timber",
             ResourceKind::Gear => "gear",
             ResourceKind::Tools => "tools",
+            ResourceKind::Ore => "ore",
+            ResourceKind::Residue => "residue",
         }
     }
 
@@ -63,7 +72,8 @@ impl ResourceKind {
             ResourceKind::Food => [1, 16, 31, 61, 101],
             ResourceKind::Valuables => [1, 6, 13, 26, 51],
             ResourceKind::Stone | ResourceKind::Wood => [1, 11, 26, 51, 91],
-            ResourceKind::Gear | ResourceKind::Tools => [1, 6, 13, 26, 51],
+            ResourceKind::Gear | ResourceKind::Tools | ResourceKind::Ore => [1, 6, 13, 26, 51],
+            ResourceKind::Residue => [1, 3, 6, 11, 21],
         }
     }
 }
@@ -107,6 +117,10 @@ pub struct Resources {
     pub gear: i64,
     #[serde(default)]
     pub tools: i64,
+    #[serde(default)]
+    pub ore: i64,
+    #[serde(default)]
+    pub residue: i64,
 }
 
 /// Matches JSON shapes like {"food": 5, "valuables": -10} — used for effects,
@@ -126,10 +140,14 @@ pub struct ResourceDelta {
     pub gear: i64,
     #[serde(default)]
     pub tools: i64,
+    #[serde(default)]
+    pub ore: i64,
+    #[serde(default)]
+    pub residue: i64,
 }
 
 impl ResourceDelta {
-    fn fields(&self) -> [(ResourceKind, i64); 6] {
+    fn fields(&self) -> [(ResourceKind, i64); 8] {
         [
             (ResourceKind::Food, self.food),
             (ResourceKind::Valuables, self.valuables),
@@ -137,6 +155,8 @@ impl ResourceDelta {
             (ResourceKind::Wood, self.wood),
             (ResourceKind::Gear, self.gear),
             (ResourceKind::Tools, self.tools),
+            (ResourceKind::Ore, self.ore),
+            (ResourceKind::Residue, self.residue),
         ]
     }
 
@@ -152,6 +172,8 @@ impl ResourceDelta {
             wood: -self.wood,
             gear: -self.gear,
             tools: -self.tools,
+            ore: -self.ore,
+            residue: -self.residue,
         }
     }
 
@@ -195,6 +217,8 @@ impl Resources {
             ResourceKind::Wood => self.wood,
             ResourceKind::Gear => self.gear,
             ResourceKind::Tools => self.tools,
+            ResourceKind::Ore => self.ore,
+            ResourceKind::Residue => self.residue,
         }
     }
 
@@ -209,6 +233,8 @@ impl Resources {
         self.wood += delta.wood;
         self.gear += delta.gear;
         self.tools += delta.tools;
+        self.ore += delta.ore;
+        self.residue += delta.residue;
         self.clamp();
     }
 
@@ -219,6 +245,8 @@ impl Resources {
             && self.wood >= cost.wood
             && self.gear >= cost.gear
             && self.tools >= cost.tools
+            && self.ore >= cost.ore
+            && self.residue >= cost.residue
     }
 
     pub fn clamp(&mut self) {
@@ -228,5 +256,7 @@ impl Resources {
         self.wood = self.wood.max(0);
         self.gear = self.gear.max(0);
         self.tools = self.tools.max(0);
+        self.ore = self.ore.max(0);
+        self.residue = self.residue.max(0);
     }
 }

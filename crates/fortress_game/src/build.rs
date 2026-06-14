@@ -17,7 +17,10 @@ impl Plugin for BuildMenuPlugin {
                 Update,
                 (build_click, close_menu, tint_buttons).run_if(in_state(AppState::BuildMenu)),
             )
-            .add_systems(Update, open_key.run_if(in_state(AppState::FortressView)));
+            .add_systems(
+                Update,
+                (open_key, forge_focus_key).run_if(in_state(AppState::FortressView)),
+            );
     }
 }
 
@@ -34,6 +37,25 @@ fn open_key(keys: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<Ap
     if keys.just_pressed(KeyCode::KeyB) {
         next_state.set(AppState::BuildMenu);
     }
+}
+
+/// Press F to cycle what the forge concentrates on (weapons → armor → tools).
+fn forge_focus_key(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut game: ResMut<Game>,
+    mut log: ResMut<GameLog>,
+) {
+    use fortress_core::ItemKind;
+    if !keys.just_pressed(KeyCode::KeyF) {
+        return;
+    }
+    let next = match game.0.fortress.craft_focus {
+        ItemKind::Weapon => ItemKind::Armor,
+        ItemKind::Armor => ItemKind::Tool,
+        ItemKind::Tool => ItemKind::Weapon,
+    };
+    game.0.fortress.craft_focus = next;
+    log.push(format!("The forge will now work toward {}s.", next.name()));
 }
 
 fn spawn_menu(mut commands: Commands, game: Res<Game>) {

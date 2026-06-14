@@ -640,5 +640,161 @@
         ]
       }
     ]
+  },
+  {
+    "name": "The Barrow Light",
+    "description": "For three nights a cold blue light has guttered over the old barrow on the moor. The folk whisper of a king buried with his blade; the wise whisper of what guards it.",
+    "tags": [
+      "mystery"
+    ],
+    "min_day": 12,
+    "weight": 1.2,
+    "forbids_flags": [
+      "barrow_found",
+      "barrow_left",
+      "barrow_claimed",
+      "barrow_cursed"
+    ],
+    "choices": [
+      {
+        "label": "Send watchers to the barrow",
+        "description": "Learn what stirs out there.",
+        "effects": [
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "barrow_found"
+            }
+          }
+        ]
+      },
+      {
+        "label": "Bar the gate and leave it be",
+        "description": "Some doors are best left shut.",
+        "effects": [
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "barrow_left"
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": -1
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Into the Barrow",
+    "description": "Your watchers have found the way in: a stone throat sinking into the dark, and at its bottom a dead king on a stone bench, a bright blade across his knees and a black crown on his brow.",
+    "tags": [
+      "mystery",
+      "demon"
+    ],
+    "min_day": 14,
+    "weight": 2.0,
+    "requires_flags": [
+      "barrow_found"
+    ],
+    "forbids_flags": [
+      "barrow_claimed",
+      "barrow_cursed"
+    ],
+    "choices": [
+      {
+        "label": "Take up the blade",
+        "description": "A king's sword, keen and unrusted. It will serve the living now.",
+        "flavor": "{player} lifts the blade; it hums like a struck bell.",
+        "effects": [
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "barrow_claimed"
+            }
+          },
+          {
+            "kind": "grant_item",
+            "params": {
+              "kind": "weapon",
+              "quality": "masterwork",
+              "enchant": "keen",
+              "artifact": true,
+              "name": "Mournedge, the Barrow-Blade"
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": 4
+            }
+          }
+        ]
+      },
+      {
+        "label": "Pry the crown from his brow",
+        "description": "Cold gold, and colder still the thing inside it. Power has a price.",
+        "effects": [
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "barrow_cursed"
+            }
+          },
+          {
+            "kind": "grant_item",
+            "params": {
+              "kind": "armor",
+              "quality": "fine",
+              "enchant": "hexed",
+              "artifact": true,
+              "name": "The Wight-Crown"
+            }
+          },
+          {
+            "kind": "region",
+            "params": {
+              "darkness": 6
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": -3
+            }
+          }
+        ]
+      },
+      {
+        "label": "Seal the barrow with stone",
+        "description": "Let the dead keep their own. Wall it up and walk away.",
+        "cost": {
+          "stone": 8
+        },
+        "effects": [
+          {
+            "kind": "set_flag",
+            "params": {
+              "flag": "barrow_claimed"
+            }
+          },
+          {
+            "kind": "region",
+            "params": {
+              "darkness": -3
+            }
+          },
+          {
+            "kind": "morale",
+            "params": {
+              "amount": 2
+            }
+          }
+        ]
+      }
+    ]
   }
 ]

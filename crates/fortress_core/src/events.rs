@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use crate::fortress::Upgrade;
 use crate::inhabitants::Role;
+use crate::items::{Enchant, ItemKind, Quality};
 use crate::player::StatKind;
 use crate::resources::ResourceDelta;
 
@@ -40,6 +41,19 @@ pub enum Effect {
     /// event's `requires_flags`/`forbids_flags`. Drives multi-step arcs.
     SetFlag { flag: String },
     ClearFlag { flag: String },
+    /// Place a specific item in the armory — a crafted reward, a found blade,
+    /// or (with `artifact`/`name`) a one-of-a-kind artifact from an arc.
+    GrantItem {
+        kind: ItemKind,
+        #[serde(default = "default_quality")]
+        quality: Quality,
+        #[serde(default)]
+        enchant: Option<Enchant>,
+        #[serde(default)]
+        artifact: bool,
+        #[serde(default)]
+        name: Option<String>,
+    },
     /// Push back (or feed) the regional darkness war: tweak darkness directly,
     /// bolster a random surviving site, or shift the portal pressure.
     Region {
@@ -129,6 +143,10 @@ fn default_max_morale() -> i32 {
 
 fn default_weight() -> f64 {
     1.0
+}
+
+fn default_quality() -> Quality {
+    Quality::Plain
 }
 
 impl Event {
