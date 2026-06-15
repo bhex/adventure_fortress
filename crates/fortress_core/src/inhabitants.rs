@@ -16,16 +16,33 @@ pub enum Role {
     Miner,
     /// The unspecialized arrival: general labor, learns a trade over time.
     Peasant,
+    Scholar,
+    Herbalist,
 }
 
 impl Role {
-    pub const ALL: [Role; 6] =
-        [Role::Guard, Role::Farmer, Role::Blacksmith, Role::Healer, Role::Miner, Role::Peasant];
+    pub const ALL: [Role; 8] = [
+        Role::Guard,
+        Role::Farmer,
+        Role::Blacksmith,
+        Role::Healer,
+        Role::Miner,
+        Role::Peasant,
+        Role::Scholar,
+        Role::Herbalist,
+    ];
 
     /// Roles a peasant can drift into / be assigned to (the real trades).
     /// Mining isn't a drift target — it has no distinct skill of its own — so
     /// miners are made by hand, not by aptitude.
-    pub const TRADES: [Role; 4] = [Role::Guard, Role::Farmer, Role::Blacksmith, Role::Healer];
+    pub const TRADES: [Role; 6] = [
+        Role::Guard,
+        Role::Farmer,
+        Role::Blacksmith,
+        Role::Healer,
+        Role::Scholar,
+        Role::Herbalist,
+    ];
 
     pub fn name(&self) -> &'static str {
         match self {
@@ -35,6 +52,8 @@ impl Role {
             Role::Healer => "healer",
             Role::Miner => "miner",
             Role::Peasant => "peasant",
+            Role::Scholar => "scholar",
+            Role::Herbalist => "herbalist",
         }
     }
 
@@ -44,7 +63,8 @@ impl Role {
             Role::Guard => Skill::Combat,
             Role::Farmer => Skill::Farming,
             Role::Blacksmith => Skill::Smithing,
-            Role::Healer => Skill::Medicine,
+            Role::Healer | Role::Herbalist => Skill::Medicine,
+            Role::Scholar => Skill::Lore,
             // Miners are laborers underground — they keep their hand in at craft.
             Role::Miner | Role::Peasant => Skill::Crafting,
         }
@@ -126,6 +146,9 @@ const PEASANT_NAMES: [&str; 10] =
 const MINER_NAMES: [&str; 10] =
     ["Borin", "Delf", "Grum", "Korin", "Maddoc", "Nael", "Orin", "Pike", "Rorek", "Thane"];
 
+const SCHOLAR_NAMES: [&str; 5] = ["Elias", "Bede", "Gildas", "Caleb", "Silas"];
+const HERBALIST_NAMES: [&str; 5] = ["Rowan", "Sage", "Yarrow", "Briar", "Hazel"];
+
 fn names_for(role: Role) -> &'static [&'static str] {
     match role {
         Role::Guard => &GUARD_NAMES,
@@ -134,6 +157,8 @@ fn names_for(role: Role) -> &'static [&'static str] {
         Role::Healer => &HEALER_NAMES,
         Role::Miner => &MINER_NAMES,
         Role::Peasant => &PEASANT_NAMES,
+        Role::Scholar => &SCHOLAR_NAMES,
+        Role::Herbalist => &HERBALIST_NAMES,
     }
 }
 
@@ -190,12 +215,14 @@ impl Inhabitant {
 /// Most who reach the gates are common folk; trained specialists are rarer.
 /// You shape your garrison by assigning roles, not by who happens to arrive.
 pub fn random_arrival_role(rng: &mut GameRng) -> Role {
-    match weighted_index(rng, &[5.0, 2.0, 2.0, 1.0, 1.0]).unwrap_or(0) {
+    match weighted_index(rng, &[5.0, 2.0, 2.0, 1.0, 1.0, 0.5, 0.5]).unwrap_or(0) {
         0 => Role::Peasant,
         1 => Role::Farmer,
         2 => Role::Guard,
         3 => Role::Blacksmith,
-        _ => Role::Healer,
+        4 => Role::Healer,
+        5 => Role::Scholar,
+        _ => Role::Herbalist,
     }
 }
 

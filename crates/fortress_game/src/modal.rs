@@ -83,6 +83,9 @@ fn spawn_modal(mut commands: Commands, active: Res<ActiveEvent>, game: Res<Game>
                             ChoiceAvailability::StatLocked(stat, min) => {
                                 format!("  [{} {} required]", stat.name(), min)
                             }
+                            ChoiceAvailability::ClassLocked(class) => {
+                                format!("  [only a {} may]", class.name())
+                            }
                         };
 
                         let mut button = panel.spawn((

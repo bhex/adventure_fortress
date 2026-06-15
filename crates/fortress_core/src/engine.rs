@@ -18,6 +18,12 @@ fn training_for_tag(tag: &str) -> &'static [(Role, Skill, u32)] {
             (Role::Blacksmith, Skill::Smithing, 6),
             (Role::Farmer, Skill::Crafting, 6),
         ],
+        "diplomacy" => &[(Role::Scholar, Skill::Lore, 8)],
+        "famine" => &[
+            (Role::Farmer, Skill::Crafting, 8),
+            (Role::Herbalist, Skill::Medicine, 6),
+        ],
+        "mutiny" => &[(Role::Guard, Skill::Combat, 6)],
         _ => &[],
     }
 }
@@ -27,6 +33,8 @@ pub enum ChoiceAvailability {
     Ok,
     CantAfford,
     StatLocked(StatKind, u8),
+    /// A class-exclusive choice the current commander can't take.
+    ClassLocked(ClassKind),
 }
 
 /// A plain-language preview of what a choice's effects will do, for the modal.
@@ -170,7 +178,7 @@ pub fn roll<'a>(
 
 /// Effective cost of a choice for this player (Steward discount on economy events).
 pub fn effective_cost(choice: &Choice, event: &Event, player: Option<&PlayerCharacter>) -> ResourceDelta {
-    let mut cost = choice.cost.clone();
+    let mut cost = choice.cost;
     let is_steward = player.is_some_and(|p| p.class == ClassKind::Steward);
     if is_steward && event.has_tag("economy") && !cost.is_zero() {
         for v in [&mut cost.food, &mut cost.valuables, &mut cost.stone, &mut cost.wood] {
@@ -187,6 +195,12 @@ pub fn choice_availability(
     event: &Event,
     gs: &GameState,
 ) -> ChoiceAvailability {
+    if let Some(needed) = choice.requires_class {
+        match &gs.player {
+            Some(player) if player.class == needed => {}
+            _ => return ChoiceAvailability::ClassLocked(needed),
+        }
+    }
     if let Some(player) = &gs.player {
         for (stat, min) in &choice.requires_stat {
             if player.stats.get(*stat) < *min {
@@ -236,6 +250,11 @@ fn score_choice(choice: &Choice, event: &Event, gs: &GameState) -> i64 {
     // the price of the choice, lightly weighted
     let cost = effective_cost(choice, event, gs.player.as_ref());
     score -= (cost.food + cost.valuables + cost.wood + cost.stone + cost.ore) / 2;
+    // a class-exclusive resolution the commander qualifies for is the bespoke
+    // option for this hold — nudge auto-mode toward it on close calls.
+    if choice.requires_class.is_some() {
+        score += 3;
+    }
     score
 }
 

@@ -198,6 +198,12 @@ fn preferred_anchors(kind: ActorKind) -> &'static [AnchorKind] {
         ActorKind::Inhabitant(Role::Peasant) => {
             &[AnchorKind::Courtyard, AnchorKind::Gate, AnchorKind::Walls]
         }
+        ActorKind::Inhabitant(Role::Scholar) => {
+            &[AnchorKind::Keep, AnchorKind::Courtyard]
+        }
+        ActorKind::Inhabitant(Role::Herbalist) => {
+            &[AnchorKind::Building(fortress_core::Upgrade::Infirmary), AnchorKind::Courtyard]
+        }
     }
 }
 

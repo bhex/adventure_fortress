@@ -11,6 +11,7 @@ pub enum Skill {
     Medicine,
     Smithing,
     Crafting,
+    Lore,
     // Magic is skill-driven: classes differ by which of these they start with.
     Sorcery, // raw offensive magic
     Warding, // defensive & utility magic
@@ -19,12 +20,13 @@ pub enum Skill {
 }
 
 impl Skill {
-    pub const ALL: [Skill; 9] = [
+    pub const ALL: [Skill; 10] = [
         Skill::Combat,
         Skill::Farming,
         Skill::Medicine,
         Skill::Smithing,
         Skill::Crafting,
+        Skill::Lore,
         Skill::Sorcery,
         Skill::Warding,
         Skill::Stealth,
@@ -46,6 +48,7 @@ impl Skill {
             Skill::Medicine => "medicine",
             Skill::Smithing => "smithing",
             Skill::Crafting => "crafting",
+            Skill::Lore => "lore",
             Skill::Sorcery => "sorcery",
             Skill::Warding => "warding",
             Skill::Stealth => "stealth",
@@ -61,6 +64,7 @@ impl Skill {
             Skill::Medicine => "physician",
             Skill::Smithing => "smith",
             Skill::Crafting => "crafter",
+            Skill::Lore => "scholar",
             Skill::Sorcery => "sorcerer",
             Skill::Warding => "warden",
             Skill::Stealth => "shadow",
@@ -134,6 +138,8 @@ pub struct SkillSet {
     pub smithing: u32,
     pub crafting: u32,
     #[serde(default)]
+    pub lore: u32,
+    #[serde(default)]
     pub sorcery: u32,
     #[serde(default)]
     pub warding: u32,
@@ -151,6 +157,7 @@ impl SkillSet {
             Skill::Medicine => self.medicine,
             Skill::Smithing => self.smithing,
             Skill::Crafting => self.crafting,
+            Skill::Lore => self.lore,
             Skill::Sorcery => self.sorcery,
             Skill::Warding => self.warding,
             Skill::Stealth => self.stealth,
@@ -165,6 +172,7 @@ impl SkillSet {
             Skill::Medicine => &mut self.medicine,
             Skill::Smithing => &mut self.smithing,
             Skill::Crafting => &mut self.crafting,
+            Skill::Lore => &mut self.lore,
             Skill::Sorcery => &mut self.sorcery,
             Skill::Warding => &mut self.warding,
             Skill::Stealth => &mut self.stealth,

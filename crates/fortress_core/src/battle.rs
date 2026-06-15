@@ -15,6 +15,7 @@ use crate::events::Event;
 use crate::game_state::GameState;
 use crate::inhabitants::Role;
 use crate::items::ItemKind;
+use crate::player::ClassKind;
 use crate::region::DarknessBand;
 use crate::resources::ResourceDelta;
 use crate::skills::Skill;
@@ -52,6 +53,70 @@ struct Combatant {
     push: i32,
     mortal: bool,
     kind: ActorKind,
+}
+
+/// How a commander's class colours the fight: a standing edge and an opening
+/// flourish. The numbers are small — they tilt a close fight and give each class
+/// its own feel on the wall, without overruling the garrison's own strength.
+#[derive(Default)]
+struct Doctrine {
+    /// Added to our side's push every round (a steadying presence).
+    rally: i32,
+    /// Added to the wards that blunt the foe before blows land.
+    extra_ward: i32,
+    /// Momentum granted before the first exchange (an opening strike).
+    opening_strike: i32,
+    /// Subtracted from the foe's strength (preparation, terrain, supply).
+    soften: i32,
+    /// A one-line flourish narrated at muster.
+    note: Option<&'static str>,
+}
+
+/// The doctrine a living commander of this class brings to the wall. Pure
+/// (reads `gs` only for the Steward's works-driven softening); any *cost* of the
+/// doctrine (the Warlock's chill) is paid by the caller, not here.
+fn class_doctrine(class: ClassKind, gs: &GameState) -> Doctrine {
+    match class {
+        // A war-leader: the line steadies and holds round after round.
+        ClassKind::Warlord => Doctrine {
+            rally: 3,
+            note: Some("The Warlord's banner steadies every hand — the line will not break easily."),
+            ..Default::default()
+        },
+        // An administrator: stores, stakes, and braced gates blunt the assault,
+        // the more so the better the walls are kept.
+        ClassKind::Steward => Doctrine {
+            soften: 2 + gs.fortress.defense / 20,
+            note: Some("The Steward's preparations tell: braced gates and stocked walls blunt the assault."),
+            ..Default::default()
+        },
+        // A warder: shimmering wards go up before the first blow.
+        ClassKind::Wizard => Doctrine {
+            extra_ward: 2,
+            note: Some("The Wizard throws up shimmering wards before the first blow lands."),
+            ..Default::default()
+        },
+        // Raw power: a thunderclap opening that scatters the foe's van.
+        ClassKind::Sorcerer => Doctrine {
+            opening_strike: 6,
+            note: Some("The Sorcerer opens with a thunderclap of raw power, scattering the foe's van."),
+            ..Default::default()
+        },
+        // A shadow-walker: an ambush that throws the attack into confusion.
+        ClassKind::Mystic => Doctrine {
+            opening_strike: 4,
+            rally: 1,
+            note: Some("The Mystic's ambush from the shadows throws the attackers into disarray."),
+            ..Default::default()
+        },
+        // Dark arts: potent on the wall, but the hold feels the chill (cost paid
+        // by the caller).
+        ClassKind::Warlock => Doctrine {
+            rally: 5,
+            note: Some("The Warlock spends dark power freely — and the hold feels the chill of it."),
+            ..Default::default()
+        },
+    }
 }
 
 /// Resolve one battle against a foe of the given `power`, paying out
@@ -92,6 +157,18 @@ pub fn fight_battle(
             frontline.push(Combatant { name: p.name.clone(), push, mortal: true, kind });
         }
     }
+
+    // The commander's class lends the wall its doctrine. The Warlock's edge is
+    // bought with morale — the chill of dark power, paid here at muster.
+    let doctrine = match &gs.player {
+        Some(p) if p.is_alive() => class_doctrine(p.class, gs),
+        _ => Doctrine::default(),
+    };
+    let warlock = gs.player.as_ref().is_some_and(|p| p.is_alive() && p.class == ClassKind::Warlock);
+    if warlock {
+        gs.fortress.apply_morale_delta(-4);
+    }
+    warding += doctrine.extra_ward;
 
     // Guards stand the line; mage-folk among the inhabitants step up to cast or
     // to ward; everyone else is a reserve, called up only on a breach.
@@ -152,7 +229,7 @@ pub fn fight_battle(
             _ => {}
         }
     }
-    let enemy_effective = (enemy - warding).max(1);
+    let enemy_effective = (enemy - warding - doctrine.soften).max(1);
 
     // High hearts press the attack; a sullen hold gives ground — the morale
     // passive made flesh on the wall.
@@ -168,14 +245,17 @@ pub fn fight_battle(
         enemy,
         if warding > 0 { " (the wards bite into it)" } else { "" },
     ));
+    if let Some(note) = doctrine.note {
+        lines.push(note.to_string());
+    }
 
     // ---- the rounds ----
-    let mut momentum = 0i32;
+    let mut momentum = doctrine.opening_strike;
     let mut breached = false;
     let mut rounds = 0usize;
     while rounds < MAX_ROUNDS && !frontline.is_empty() {
         rounds += 1;
-        let our = side_strength(&frontline, gs, morale_edge) + momentum / 5;
+        let our = side_strength(&frontline, gs, morale_edge) + momentum / 5 + doctrine.rally;
         let our_roll = our + gs.rng.random_range(1..=6);
         let foe_roll = enemy_effective + gs.rng.random_range(1..=6);
         let round_margin = our_roll - foe_roll;

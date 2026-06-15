@@ -94,6 +94,7 @@ pub const HOUSING_PLOT_RECTS: [(IVec2, IVec2); 4] = [
 
 fn building_rect(u: Upgrade) -> (IVec2, IVec2) {
     match u {
+        Upgrade::Keep => (IVec2::new(18, 9), IVec2::new(22, 13)),
         Upgrade::Watchtower => (IVec2::new(2, 21), IVec2::new(3, 22)),
         Upgrade::Farm => (IVec2::new(4, 12), IVec2::new(8, 14)),
         Upgrade::Granary => (IVec2::new(4, 5), IVec2::new(6, 7)),
@@ -105,15 +106,19 @@ fn building_rect(u: Upgrade) -> (IVec2, IVec2) {
         Upgrade::Lumberyard => (IVec2::new(4, 17), IVec2::new(6, 19)),
         Upgrade::Shrine => (IVec2::new(33, 9), IVec2::new(35, 11)),
         Upgrade::TrainingYard => (IVec2::new(33, 4), IVec2::new(35, 6)),
-        Upgrade::Mine => (IVec2::new(24, 20), IVec2::new(26, 22)),
-        Upgrade::Graveyard => (IVec2::new(33, 20), IVec2::new(35, 22)),
-        Upgrade::WizardTower => (IVec2::new(35, 12), IVec2::new(36, 14)),
+        Upgrade::Mine => (IVec2::new(7, 0), IVec2::new(9, 2)),
+        Upgrade::Graveyard => (IVec2::new(0, 7), IVec2::new(2, 9)),
+        Upgrade::WizardTower => (IVec2::new(8, 3), IVec2::new(10, 5)),
+        Upgrade::Market => (IVec2::new(5, 6), IVec2::new(7, 8)),
+        Upgrade::Alchemist => (IVec2::new(7, 6), IVec2::new(9, 8)),
+        Upgrade::Library => (IVec2::new(2, 6), IVec2::new(4, 8)),
         Upgrade::Housing => HOUSING_PLOT_RECTS[0], // plot picked per instance
     }
 }
 
 pub fn building_glyph(u: Upgrade) -> (char, Color) {
     match u {
+        Upgrade::Keep => ('#', Color::srgb(0.7, 0.7, 0.8)),
         Upgrade::Farm => ('"', Color::srgb(0.4, 0.8, 0.2)),
         Upgrade::Granary => ('G', Color::srgb(0.85, 0.7, 0.3)),
         Upgrade::Blacksmith => ('B', Color::srgb(0.9, 0.55, 0.2)),
@@ -126,9 +131,12 @@ pub fn building_glyph(u: Upgrade) -> (char, Color) {
         Upgrade::Lumberyard => ('L', Color::srgb(0.55, 0.7, 0.3)),
         Upgrade::Shrine => ('S', Color::srgb(0.75, 0.85, 1.0)),
         Upgrade::TrainingYard => ('Y', Color::srgb(0.85, 0.45, 0.45)),
-        Upgrade::Mine => ('M', Color::srgb(0.6, 0.6, 0.65)),
-        Upgrade::Graveyard => ('t', Color::srgb(0.7, 0.72, 0.72)),
+        Upgrade::Mine => ('m', Color::srgb(0.5, 0.5, 0.5)),
+        Upgrade::Graveyard => ('+', Color::srgb(0.6, 0.6, 0.6)),
         Upgrade::WizardTower => ('Z', Color::srgb(0.6, 0.4, 0.9)),
+        Upgrade::Market => ('$', Color::srgb(0.8, 0.7, 0.2)),
+        Upgrade::Alchemist => ('a', Color::srgb(0.2, 0.8, 0.4)),
+        Upgrade::Library => ('R', Color::srgb(0.4, 0.6, 0.9)),
     }
 }
 
@@ -137,9 +145,11 @@ pub fn role_glyph(role: Role) -> (char, Color) {
         Role::Guard => ('g', Color::srgb(0.95, 0.3, 0.3)),
         Role::Farmer => ('f', Color::srgb(0.3, 0.9, 0.3)),
         Role::Blacksmith => ('b', Color::srgb(0.95, 0.75, 0.2)),
-        Role::Healer => ('h', Color::srgb(0.3, 0.9, 0.95)),
-        Role::Miner => ('m', Color::srgb(0.75, 0.6, 0.4)),
+        Role::Healer => ('h', Color::srgb(0.9, 0.9, 0.9)),
+        Role::Miner => ('m', Color::srgb(0.6, 0.6, 0.6)),
         Role::Peasant => ('p', Color::srgb(0.7, 0.65, 0.55)),
+        Role::Scholar => ('s', Color::srgb(0.4, 0.6, 0.9)),
+        Role::Herbalist => ('e', Color::srgb(0.2, 0.8, 0.4)),
     }
 }
 

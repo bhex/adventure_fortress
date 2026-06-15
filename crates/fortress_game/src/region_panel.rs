@@ -16,7 +16,7 @@ impl Plugin for RegionPanelPlugin {
         app.add_systems(OnEnter(AppState::RegionView), spawn_panel)
             .add_systems(
                 Update,
-                (close_panel, tint_buttons).run_if(in_state(AppState::RegionView)),
+                (close_panel, tint_buttons, expedition_click).run_if(in_state(AppState::RegionView)),
             )
             .add_systems(Update, open_key.run_if(in_state(AppState::FortressView)));
     }
@@ -24,6 +24,9 @@ impl Plugin for RegionPanelPlugin {
 
 #[derive(Component)]
 struct CloseButton;
+
+#[derive(Component)]
+struct ExpeditionButton(String);
 
 fn open_key(keys: Res<ButtonInput<KeyCode>>, mut next_state: ResMut<NextState<AppState>>) {
     if keys.just_pressed(KeyCode::KeyR) {
@@ -138,26 +141,85 @@ fn region_summary(panel: &mut ChildSpawnerCommands, gs: &GameState) {
 }
 
 fn site_list(panel: &mut ChildSpawnerCommands, gs: &GameState) {
-    if gs.region.sites.is_empty() {
+    let mut targets = Vec::new();
+    for site in &gs.region.sites {
+        targets.push(site.name.clone());
+    }
+    if gs.flags.contains("artifact_hint_1") && !gs.flags.contains("artifact_retrieved") {
+        targets.push("The Forgotten Vault".to_string());
+    }
+
+    if targets.is_empty() {
         panel.spawn(text("Nothing stands. The dark has the field.", 14.0, band_color("besieged")));
         return;
     }
-    for site in &gs.region.sites {
-        let band = site.strength_band();
-        let bar = {
+
+    let heroes_avail = !gs.adventurers.is_empty();
+
+    for site_name in targets {
+        let (kind_name, strength_band, glyph, bar) = if let Some(site) = gs.region.sites.iter().find(|s| s.name == site_name) {
             let filled = (site.strength.clamp(0, 14) / 2) as usize;
-            format!("{}{}", "█".repeat(filled), "░".repeat(7 - filled.min(7)))
+            let b = format!("{}{}", "█".repeat(filled), "░".repeat(7 - filled.min(7)));
+            (site.kind.name(), site.strength_band(), site_glyph(site.kind), b)
+        } else {
+            ("ancient ruin", "unknown", '*', "███████".to_string())
         };
-        panel.spawn(text(
-            format!(
-                "{} {:<22} {} {}",
-                site_glyph(site.kind),
-                format!("{} ({})", site.name, site.kind.name()),
-                bar,
-                band
-            ),
-            14.0,
-            band_color(band),
-        ));
+
+        let label = format!(
+            "{} {:<22} {} {}",
+            glyph,
+            format!("{} ({})", site_name, kind_name),
+            bar,
+            strength_band
+        );
+
+        if heroes_avail {
+            let mut button = panel.spawn((
+                ExpeditionButton(site_name.clone()),
+                Button,
+                Node {
+                    padding: UiRect::all(Val::Px(6.0)),
+                    margin: UiRect::vertical(Val::Px(2.0)),
+                    ..Default::default()
+                },
+                BackgroundColor(BTN_BG),
+            ));
+            button.with_children(|b| {
+                b.spawn(text(label, 14.0, band_color(strength_band)));
+                b.spawn(text("  [Send Expedition]", 13.0, ACCENT));
+            });
+        } else {
+            panel.spawn(text(label, 14.0, band_color(strength_band)));
+        }
+    }
+}
+
+fn expedition_click(
+    interactions: Query<(&Interaction, &ExpeditionButton), Changed<Interaction>>,
+    mut game: ResMut<Game>,
+    mut log: ResMut<crate::bridge::GameLog>,
+    mut next_state: ResMut<NextState<AppState>>,
+) {
+    for (interaction, btn) in interactions.iter() {
+        if *interaction != Interaction::Pressed { continue; }
+        
+        if game.0.adventurers.is_empty() {
+            log.push("No heroes available to send.".to_string());
+            return;
+        }
+        
+        // Take all adventurers
+        let heroes = std::mem::take(&mut game.0.adventurers);
+        let count = heroes.len();
+        
+        game.0.expeditions.push(fortress_core::Expedition {
+            target_site_name: btn.0.clone(),
+            days_remaining: 5,
+            heroes,
+        });
+        
+        log.push(format!("Day {}: Dispatched {} heroes on an expedition to {}.", game.0.fortress.day, count, btn.0));
+        next_state.set(AppState::FortressView);
+        return;
     }
 }

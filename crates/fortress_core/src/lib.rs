@@ -26,7 +26,7 @@ pub use fortress::{
     Upgrade, HOUSING_PLOTS, MAX_BUILDING_LEVEL,
 };
 pub use game_state::{
-    BuildAvailability, GameState, ADVENTURER_MIN_REPUTATION, MAX_ADVENTURERS, SAVE_VERSION,
+    BuildAvailability, Expedition, GameState, ADVENTURER_MIN_REPUTATION, MAX_ADVENTURERS, SAVE_VERSION,
 };
 pub use inhabitants::{generate_inhabitant, Inhabitant, InhabitantManager, Role, Trait};
 pub use items::{

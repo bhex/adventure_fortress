@@ -1,0 +1,29 @@
+[
+  {
+    "name": "A Traveller's Tale",
+    "description": "A hooded traveller sits by the fire in the tavern, spinning a tale of a forgotten vault in the eastern crags where an artifact of immense power lies buried.",
+    "tags": ["quest"],
+    "min_day": 5,
+    "weight": 0.8,
+    "forbids_flags": ["artifact_hint_1"],
+    "requires_upgrade": "Tavern",
+    "choices": [
+      {
+        "label": "Buy the map",
+        "description": "It costs you a fair bit of silver, but the promise of power is too great.",
+        "cost": {
+          "valuables": 10
+        },
+        "effects": [
+          {"kind": "set_flag", "params": {"flag": "artifact_hint_1"}},
+          {"kind": "morale", "params": {"amount": 5}}
+        ]
+      },
+      {
+        "label": "Dismiss it as a fable",
+        "description": "You have no time or coin for fairytales.",
+        "effects": []
+      }
+    ]
+  }
+]

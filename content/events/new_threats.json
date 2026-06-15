@@ -1,0 +1,101 @@
+[
+  {
+    "name": "The Winter Starvation",
+    "description": "The snow lies deep and the stores are nearly empty. Desperation turns to anger in the frozen dark.",
+    "tags": ["famine", "disaster"],
+    "min_day": 20,
+    "requires_season": "winter",
+    "weight": 0.2,
+    "choices": [
+      {
+        "label": "Ration the last of the food",
+        "description": "Everyone goes hungry, but everyone lives.",
+        "cost": {
+          "food": 10
+        },
+        "effects": [
+          {"kind": "morale", "params": {"amount": -15}},
+          {"kind": "apply_to_role", "params": {"role": "peasant", "morale": -5}}
+        ]
+      },
+      {
+        "label": "Forage in the blizzards",
+        "description": "Send hunters out into the storm. Some might not return.",
+        "effects": [
+          {"kind": "kill_inhabitant", "params": {"role": "peasant"}},
+          {"kind": "resource", "params": {"food": 15}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Commander's Share",
+    "description": "Whispers in the barracks have turned into shouts. The guards claim they take all the risk and demand better rations.",
+    "tags": ["mutiny", "diplomacy"],
+    "min_day": 15,
+    "min_morale": 0,
+    "max_morale": 40,
+    "requires_role": "guard",
+    "weight": 0.2,
+    "choices": [
+      {
+        "label": "Pay them their due",
+        "description": "Coin buys loyalty, for now.",
+        "cost": {
+          "valuables": 10
+        },
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "guard", "morale": 20}}
+        ]
+      },
+      {
+        "label": "Punish the ringleaders",
+        "description": "An iron fist stops a mutiny, but breaks morale.",
+        "effects": [
+          {"kind": "kill_inhabitant", "params": {"role": "guard"}},
+          {"kind": "morale", "params": {"amount": -10}}
+        ]
+      },
+      {
+        "label": "Speak to their honor",
+        "description": "Remind them of the oaths they swore.",
+        "stat_check": {
+          "stat": "heart",
+          "difficulty": 8,
+          "success_effects": [
+            {"kind": "apply_to_role", "params": {"role": "guard", "morale": 10}}
+          ],
+          "failure_effects": [
+            {"kind": "apply_to_role", "params": {"role": "guard", "morale": -20}}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "The Stranded Envoy",
+    "description": "An envoy from a neighboring city-state has been trapped by the dark on your roads.",
+    "tags": ["diplomacy"],
+    "min_day": 10,
+    "weight": 0.2,
+    "choices": [
+      {
+        "label": "Offer them shelter",
+        "description": "A warm fire buys goodwill.",
+        "cost": {
+          "food": 5
+        },
+        "effects": [
+          {"kind": "region", "params": {"site_strength": 3}}
+        ]
+      },
+      {
+        "label": "Turn them away",
+        "description": "We barely have enough for our own.",
+        "effects": [
+          {"kind": "region", "params": {"site_strength": -2}}
+        ]
+      }
+    ]
+  }
+]

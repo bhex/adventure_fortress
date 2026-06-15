@@ -16,7 +16,7 @@ use crate::rng::GameRng;
 use crate::skills::Skill;
 use crate::world::World;
 
-pub const SAVE_VERSION: u32 = 14;
+pub const SAVE_VERSION: u32 = 15;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 
@@ -52,6 +52,13 @@ pub enum BuildAvailability {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Expedition {
+    pub target_site_name: String,
+    pub days_remaining: i32,
+    pub heroes: Vec<Adventurer>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameState {
     pub version: u32,
     pub run_seed: u64,
@@ -66,6 +73,8 @@ pub struct GameState {
     /// spend it. Gates adventurer arrivals.
     pub reputation: i32,
     pub adventurers: Vec<Adventurer>,
+    #[serde(default)]
+    pub expeditions: Vec<Expedition>,
     /// Story flags raised by events, gating multi-step arcs (see `engine`).
     /// A `BTreeSet` (not `HashSet`) so saves serialize in a stable order — the
     /// deterministic-run guarantee depends on it.
@@ -77,6 +86,11 @@ pub struct GameState {
     /// The turning year: season + the day's weather (derived, see `world`).
     #[serde(default)]
     pub world: World,
+    /// Consecutive days the stores ran dry. Resets the moment the hold is fed
+    /// again. Drives the famine cascade — death, then cannibalism, murder,
+    /// madness, and betrayal as the hunger deepens (see `deepen_famine`).
+    #[serde(default)]
+    pub famine_days: u32,
 }
 
 /// Most heroes a fortress can host at once.
@@ -100,14 +114,134 @@ impl GameState {
             region,
             reputation: 10,
             adventurers: Vec::new(),
+            expeditions: Vec::new(),
             flags: BTreeSet::new(),
             items: ItemStock::default(),
             world: World::default(),
+            famine_days: 0,
         }
     }
 
     pub fn apply_reputation_delta(&mut self, amount: i32) {
         self.reputation = (self.reputation + amount).clamp(0, 100);
+    }
+
+    /// The stores ran dry today. Track how long the famine has run and let the
+    /// hunger bite harder the longer it lasts: a deepening morale toll first,
+    /// then the weakest starve, then — once it turns truly grim — cannibalism,
+    /// murder, madness, or betrayal. Only ever called when food hit zero, so
+    /// the rng is touched *only* in famine; a well-fed run draws nothing here
+    /// and stays bit-for-bit deterministic against earlier saves/seeds.
+    fn deepen_famine(&mut self, lines: &mut Vec<String>) {
+        self.famine_days = self.famine_days.saturating_add(1);
+        let days = self.famine_days;
+        // The toll deepens with the hunger (-5 the first day, down to -11).
+        let toll = -(4 + days.min(7) as i32);
+        self.fortress.apply_morale_delta(toll);
+        lines.push(format!(
+            "Not enough food! The people go hungry. (day {days} of famine, {toll} morale)"
+        ));
+
+        // From the third day, the weakest body gives out.
+        if days >= 3 {
+            if let Some(victim) = self.weakest_inhabitant_name() {
+                if let Some(i) = self.inhabitants.find_mut(&victim) {
+                    i.damage(45 + days as i32 * 6);
+                    if !i.is_alive {
+                        self.apply_reputation_delta(-2);
+                        lines.push(format!("{victim} wastes away and dies of hunger."));
+                    }
+                }
+            }
+        }
+
+        // Once the famine turns truly grim, hunger gnaws at more than bellies.
+        if days >= 4 {
+            self.flags.insert("famine_crisis".to_string());
+            match self.rng.random_range(0..100) {
+                0..=24 => self.famine_cannibalism(lines),
+                25..=49 => self.famine_murder(lines),
+                50..=74 => self.famine_madness(lines),
+                _ => self.famine_betrayal(lines),
+            }
+        }
+    }
+
+    /// The lowest-health living soul (deterministic; ties break by roster order).
+    fn weakest_inhabitant_name(&self) -> Option<String> {
+        self.inhabitants
+            .inhabitants
+            .iter()
+            .filter(|i| i.is_alive)
+            .min_by_key(|i| i.health)
+            .map(|i| i.name.clone())
+    }
+
+    /// The desperate eat their dead. It buys a little food and a lasting horror.
+    fn famine_cannibalism(&mut self, lines: &mut Vec<String>) {
+        if self.inhabitants.count_dead() > 0 {
+            self.resources.apply_delta(&ResourceDelta { food: 12, ..Default::default() });
+            self.fortress.apply_morale_delta(-10);
+            self.apply_reputation_delta(-4);
+            lines.push(
+                "In the dark, the starving eat the dead. The hold will not speak of it. (+12 food, -10 morale)"
+                    .to_string(),
+            );
+        } else {
+            // No bodies yet — the hunger only festers.
+            self.fortress.apply_morale_delta(-3);
+            lines.push("Hollow eyes follow the weak through the halls.".to_string());
+        }
+    }
+
+    /// A killing over a hidden crust of bread. The slain is the weakest at hand.
+    fn famine_murder(&mut self, lines: &mut Vec<String>) {
+        if let Some(victim) = self.weakest_inhabitant_name() {
+            if let Some(i) = self.inhabitants.find_mut(&victim) {
+                i.is_alive = false;
+                i.health = 0;
+            }
+            self.fortress.apply_morale_delta(-8);
+            self.apply_reputation_delta(-3);
+            lines.push(format!("{victim} is found murdered over a hoarded scrap of food."));
+        }
+    }
+
+    /// Hunger breaks a mind: a soul turns Cowardly and loses heart.
+    fn famine_madness(&mut self, lines: &mut Vec<String>) {
+        let name = {
+            let pool: Vec<&str> = self
+                .inhabitants
+                .inhabitants
+                .iter()
+                .filter(|i| i.is_alive && !i.has_trait(Trait::Cowardly))
+                .map(|i| i.name.as_str())
+                .collect();
+            if pool.is_empty() {
+                None
+            } else {
+                Some(pool[self.rng.random_range(0..pool.len())].to_string())
+            }
+        };
+        if let Some(name) = name {
+            if let Some(i) = self.inhabitants.find_mut(&name) {
+                i.traits.retain(|t| *t != Trait::Brave);
+                i.traits.push(Trait::Cowardly);
+                i.apply_morale(-25);
+            }
+            self.fortress.apply_morale_delta(-5);
+            lines.push(format!("{name}'s mind cracks under the hunger — they are seized by terror."));
+        }
+    }
+
+    /// A famished, disloyal soul slips away in the night — or turns on the hold.
+    fn famine_betrayal(&mut self, lines: &mut Vec<String>) {
+        if let Some(name) = self.inhabitants.random_non_loyal_name(&mut self.rng) {
+            self.inhabitants.remove(&name);
+            self.fortress.apply_morale_delta(-6);
+            self.apply_reputation_delta(-3);
+            lines.push(format!("{name} deserts the hold under cover of night, taking what they can carry."));
+        }
     }
 
     pub fn new_game(run_seed: u64, fortress_name: &str, player: PlayerCharacter) -> GameState {
@@ -153,6 +287,16 @@ impl GameState {
             }
             BuildOutcome::Upgraded(level) => {
                 match (upgrade, level) {
+                    // The Keep: each tier adds beds (via sleeping_capacity),
+                    // standing defense, and room for more souls.
+                    (Upgrade::Keep, 2) => {
+                        self.fortress.apply_defense_delta(6);
+                        self.fortress.max_population += 6;
+                    }
+                    (Upgrade::Keep, _) => {
+                        self.fortress.apply_defense_delta(6);
+                        self.fortress.max_population += 8;
+                    }
                     (Upgrade::Watchtower, 2) => self.fortress.apply_defense_delta(3),
                     (Upgrade::Watchtower, _) => self.fortress.apply_defense_delta(4),
                     (Upgrade::Barracks, _) => {
@@ -206,6 +350,52 @@ impl GameState {
             }
             blocked => Err(blocked),
         }
+    }
+
+    /// Promise a build the hold can't yet pay for. Only valid when the *sole*
+    /// blocker is the cost (the building is otherwise buildable, the role on
+    /// hand, nothing of its kind already underway). The project joins the queue
+    /// pledged, and `pay_pledged_projects` funds it the day the hold can afford
+    /// it. Errs with the real blocker when a pledge isn't the answer.
+    pub fn pledge(&mut self, upgrade: Upgrade) -> Result<String, BuildAvailability> {
+        match self.build_availability(upgrade) {
+            BuildAvailability::CantAfford => {
+                let level = self.fortress.next_build_level(upgrade).unwrap_or(1);
+                self.fortress.pledge_project(upgrade, level, upgrade.build_cost(level));
+                Ok(format!(
+                    "You pledge to raise the {} — work waits on the materials.",
+                    upgrade.name()
+                ))
+            }
+            // Already affordable? Just build it. Otherwise surface the blocker.
+            BuildAvailability::Ok => self.construct(upgrade),
+            blocked => Err(blocked),
+        }
+    }
+
+    /// Fund any pledged projects the hold can now afford (paid in full, in queue
+    /// order, one per day so a windfall doesn't clear the whole backlog at once).
+    /// A funded pledge becomes an ordinary project and starts drawing labor.
+    fn pay_pledged_projects(&mut self, lines: &mut Vec<String>) {
+        if let Some(idx) = self.projects_first_affordable_pledge() {
+            let owed = self.fortress.projects[idx].materials_owed;
+            self.resources.apply_delta(&owed.negated());
+            let project = &mut self.fortress.projects[idx];
+            project.pledged = false;
+            project.materials_owed = ResourceDelta::default();
+            lines.push(format!(
+                "The pledged {} is funded at last — work begins.",
+                project.upgrade.name()
+            ));
+        }
+    }
+
+    /// The first pledged project the hold can pay for outright, if any.
+    fn projects_first_affordable_pledge(&self) -> Option<usize> {
+        self.fortress
+            .projects
+            .iter()
+            .position(|p| p.pledged && self.resources.can_afford(&p.materials_owed))
     }
 
     /// Progress-Quest construction: the next building a hold left to its own
@@ -287,6 +477,46 @@ impl GameState {
 
         // The wider war: darkness shifts, sites hold or fall.
         lines.extend(self.region.tick(&mut self.rng));
+
+        // Expeditions return
+        let mut i = 0;
+        while i < self.expeditions.len() {
+            self.expeditions[i].days_remaining -= 1;
+            if self.expeditions[i].days_remaining <= 0 {
+                let exp = self.expeditions.remove(i);
+                
+                let mut site_found = false;
+                if let Some(site) = self.region.sites.iter_mut().find(|s| s.name == exp.target_site_name) {
+                    site_found = true;
+                    let aid = self.rng.random_range(2..=5);
+                    site.strength += aid;
+                    lines.push(format!("The expedition to {} returns triumphant. The site is reinforced! (+{} strength)", exp.target_site_name, aid));
+                }
+                
+                if exp.target_site_name == "The Forgotten Vault" {
+                    lines.push("The heroes have returned from the vault... bearing an Artifact of power!".to_string());
+                    self.flags.insert("artifact_retrieved".to_string());
+                    // Generate an artifact (we can just add a masterwork/greater enchanted item, or an item with `artifact: true`)
+                    let mut artifact = crate::items::Item::enchanted(crate::items::ItemKind::Weapon, crate::items::Quality::Masterwork, crate::items::Enchant::Vital);
+                    artifact.artifact = true;
+                    artifact.name = Some("The World-Ender's Blade".to_string());
+                    self.items.add(artifact);
+                } else if !site_found {
+                    lines.push(format!("The expedition to {} returns. The site had already fallen...", exp.target_site_name));
+                }
+                
+                for hero in exp.heroes {
+                    lines.push(format!("{} the {} returns to the fortress.", hero.name, hero.class.name()));
+                    self.adventurers.push(hero);
+                }
+                self.apply_reputation_delta(5);
+            } else {
+                i += 1;
+            }
+        }
+
+        // Honor pledges the hold can now afford, then put the day's labor in.
+        self.pay_pledged_projects(&mut lines);
 
         // Construction underway: the hold's laborers raise the front project a
         // day's worth; finished works apply their bonuses (no second payment).
@@ -597,6 +827,91 @@ impl GameState {
             lines.push(format!("Laughter drifts from the tavern. (+{tavern_cheer} morale)"));
         }
 
+        // The Market: converts excess wood and stone to valuables.
+        let market_level = self.fortress.building_level(Upgrade::Market);
+        if market_level > 0 {
+            let limit = [0, 5, 10, 15][market_level.min(3) as usize];
+            // Only trade if we have plenty of surplus
+            let wood_trade = (self.resources.wood - 20).max(0).min(limit);
+            let stone_trade = (self.resources.stone - 20).max(0).min(limit);
+            if wood_trade > 0 || stone_trade > 0 {
+                let gain = (wood_trade + stone_trade) / 3;
+                if gain > 0 {
+                    self.resources.apply_delta(&ResourceDelta {
+                        wood: -wood_trade,
+                        stone: -stone_trade,
+                        valuables: gain,
+                        ..Default::default()
+                    });
+                    lines.push(format!("The market trades surplus materials. (+{gain} valuables)"));
+                }
+            }
+
+            // The other half of the market: when the two staples run dry and
+            // there is coin to spend, traders bring in wood and ore. This is
+            // what lets a hold without a Lumberyard or Mine limp along — at a
+            // price. Buys 2 wood per valuable, 1 ore per valuable (ore dearer).
+            if self.resources.valuables > 0 {
+                let mut spent = 0i64;
+                if self.resources.wood < 10 {
+                    let buy = (limit).min(self.resources.valuables - spent).max(0);
+                    if buy > 0 {
+                        self.resources.apply_delta(&ResourceDelta {
+                            wood: buy * 2,
+                            valuables: -buy,
+                            ..Default::default()
+                        });
+                        spent += buy;
+                    }
+                }
+                if self.resources.ore < 6 && self.resources.valuables - spent > 0 {
+                    let buy = (limit).min(self.resources.valuables - spent).max(0);
+                    if buy > 0 {
+                        self.resources.apply_delta(&ResourceDelta {
+                            ore: buy,
+                            valuables: -buy,
+                            ..Default::default()
+                        });
+                        spent += buy;
+                    }
+                }
+                if spent > 0 {
+                    lines.push(format!("The market buys in scarce materials. (-{spent} valuables)"));
+                }
+            }
+        }
+
+        // The Alchemist: cures Sickly or grants random buff potions (converted to morale/health here).
+        let alchemist_level = self.fortress.building_level(Upgrade::Alchemist);
+        if alchemist_level > 0 {
+            let sickly = self.inhabitants.inhabitants.iter_mut()
+                .find(|i| i.is_alive && i.has_trait(crate::inhabitants::Trait::Sickly));
+            if let Some(patient) = sickly {
+                patient.traits.retain(|&t| t != crate::inhabitants::Trait::Sickly);
+                let name = patient.name.clone();
+                lines.push(format!("The alchemist brews a cure for {}.", name));
+            } else {
+                let potions = [0, 1, 2, 3][alchemist_level.min(3) as usize];
+                self.fortress.apply_morale_delta(potions);
+                lines.push(format!("The alchemist brews restorative draughts. (+{potions} morale)"));
+            }
+        }
+
+        // The Library: trains Scholars in Lore, and Mages in Sorcery.
+        let library_level = self.fortress.building_level(Upgrade::Library);
+        if library_level > 0 {
+            let xp = match library_level {
+                1 => 2,
+                2 => 4,
+                _ => 6,
+            };
+            lines.extend(crate::engine::train_role(self, Role::Scholar, Skill::Lore, xp));
+            
+            for i in self.inhabitants.inhabitants.iter_mut().filter(|i| i.is_alive && i.skills.xp(Skill::Sorcery) > 0) {
+                i.skills.train(Skill::Sorcery, 1);
+            }
+        }
+
         let infirmary_level = self.fortress.building_level(Upgrade::Infirmary);
         if infirmary_level > 0 {
             for i in self
@@ -637,10 +952,15 @@ impl GameState {
             let upkeep = (mouths + 1) / 2;
             if self.resources.food >= upkeep {
                 self.resources.apply_delta(&ResourceDelta { food: -upkeep, ..Default::default() });
+                // The stores held — the famine, if there was one, breaks.
+                if self.famine_days > 0 {
+                    self.famine_days = 0;
+                    self.flags.remove("famine_crisis");
+                    lines.push("The stores hold once more — the famine breaks.".to_string());
+                }
             } else {
                 self.resources.food = 0;
-                self.fortress.apply_morale_delta(-5);
-                lines.push("Not enough food! The people go hungry. (-5 morale)".to_string());
+                self.deepen_famine(&mut lines);
             }
         }
 

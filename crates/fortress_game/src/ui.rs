@@ -337,6 +337,7 @@ fn update_log(
 
 fn upgrade_blurb(u: Upgrade) -> &'static str {
     match u {
+        Upgrade::Keep => "Keep\nThe heart of the hold. Raise it for more\nbeds, standing defense, and room to grow.",
         Upgrade::Watchtower => "Watchtower\n+5 defense. Eyes on the horizon —\nscouts bring warning of attacks.",
         Upgrade::Farm => "Farm\n+3 food every day.",
         Upgrade::Infirmary => "Infirmary\nDisasters strike half as hard.\nHealers recover spirit daily.",
@@ -350,8 +351,11 @@ fn upgrade_blurb(u: Upgrade) -> &'static str {
         Upgrade::Shrine => "Shrine\nFaith against the dark. Softens\ndemon dread, more each tier.",
         Upgrade::TrainingYard => "Training Yard\nDrill and spar. Guards earn\nCombat practice every day.",
         Upgrade::Mine => "Mine\nStone every day — and a little raw\nmetal for the forge.",
-        Upgrade::Graveyard => "Graveyard\nThe dead are honored here; grief\nweighs lighter on the living.",
+        Upgrade::Graveyard => "Graveyard\nHonors the fallen. A place of quiet rest\nthat eases grief and bolsters resolve.",
         Upgrade::WizardTower => "Wizard Tower\nA seat for the arcane: enchanting\nand stranger work to come.",
+        Upgrade::Market => "Market\nTrade away excess wood and stone\nfor valuables.",
+        Upgrade::Alchemist => "Alchemist\nBrews curatives and restorative draughts.",
+        Upgrade::Library => "Library\nA repository of knowledge. Scholars and mages\nhone their craft here.",
     }
 }
 
@@ -549,8 +553,10 @@ fn update_inspect(
                         Role::Farmer => "Coaxes life from stubborn soil.",
                         Role::Blacksmith => "The ring of the hammer is constant.",
                         Role::Healer => "Mends what the world breaks.",
-                        Role::Miner => "Hews stone and ore from the deep seam.",
+                        Role::Miner => "Toils in the deep for stone and ore.",
                         Role::Peasant => "Willing hands, waiting for a trade.",
+                        Role::Scholar => "Records the world's lore in the library.",
+                        Role::Herbalist => "Gathers and brews in the alchemist's shop.",
                     };
                     format!(
                         "{}\n{}\nHealth {}  Morale {}\nTraits: {}\n{}\n\n{}\n\n{}\n\nAssign: [1]guard [2]farmer [3]smith\n[4]healer [5]miner [6]peasant",
