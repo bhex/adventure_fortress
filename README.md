@@ -12,7 +12,7 @@ logic crate (`fortress_core`). Game content lives as engine-agnostic JSON in
 
 ## Download & run
 
-Prebuilt binaries for **Linux**, **macOS** (Apple silicon), and **Windows** are
+Prebuilt binaries for **Linux**, **macOS** (Apple silicon & Intel), and **Windows** are
 published on the [Releases page](../../releases). Download the archive for your
 system, unpack it, and run the `fortress_game` executable **from inside the
 unpacked folder** — the game loads `content/` from beside the executable, so keep
