@@ -103,7 +103,7 @@ fn every_content_choice_resolves() {
         for idx in 0..event.choices.len() {
             let mut gs = GameState::new(1);
             gs.fortress.name = "T".to_string();
-            gs.resources.apply_delta(&ResourceDelta { food: 999, valuables: 999, stone: 999, wood: 999, gear: 999, tools: 999, ..Default::default() });
+            gs.resources.apply_delta(&ResourceDelta { food: 999, valuables: 999, stone: 999, wood: 999, ore: 999, ..Default::default() });
             for role in Role::ALL {
                 gs.inhabitants.add(Inhabitant::new(&format!("T-{}", role.name()), role));
             }
@@ -203,6 +203,41 @@ fn run_bot(seed: u64) -> String {
         if gs.fortress.day > 50 { break; } // cap sim length for tests
     }
     serde_json::to_string(&gs).unwrap()
+}
+
+#[test]
+fn no_gear_or_tools_keys_linger_in_content() {
+    // The Gear/Tools resources are retired (Stage 3). Because ResourceDelta
+    // silently ignores unknown keys, a stray "gear"/"tools" param would parse to
+    // nothing rather than fail — so guard against it at the raw-text level.
+    for entry in std::fs::read_dir(content_dir()).expect("content dir") {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("\"gear\""), "{:?} still references a gear resource", path);
+        assert!(!text.contains("\"tools\""), "{:?} still references a tools resource", path);
+    }
+}
+
+#[test]
+fn migrated_grants_hand_over_named_items() {
+    // The retired gear/tools grants became GrantItem — resolving the choice that
+    // arms the guards should drop a real, named weapon in the armory.
+    let deck = deck();
+    let arm = deck
+        .iter()
+        .find(|e| e.choices.iter().any(|c| c.label == "Arm the guards"))
+        .expect("the arm-the-guards event is present")
+        .clone();
+    let idx = arm.choices.iter().position(|c| c.label == "Arm the guards").unwrap();
+    let mut gs = GameState::new(1);
+    gs.fortress.name = "T".to_string();
+    let before = gs.items.count();
+    resolve(&arm, idx, &mut gs);
+    assert_eq!(gs.items.count(), before + 1, "a weapon joins the armory");
+    assert_eq!(gs.items.items.last().unwrap().kind, ItemKind::Weapon);
 }
 
 #[test]

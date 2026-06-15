@@ -1458,6 +1458,37 @@ fn worn_gear_breaks_but_the_smith_keeps_it_up() {
 }
 
 #[test]
+fn crafted_arms_carry_a_name_of_quality_material_and_form() {
+    use fortress_core::{ItemForm, Material};
+    let mut rng = GameRng::seed_from_u64(7);
+    let item = Item::crafted(ItemKind::Weapon, Quality::Fine, Material::Steel, &mut rng);
+    // form belongs to the kind, material and quality are carried, name reads well
+    assert_eq!(item.form.unwrap().kind(), ItemKind::Weapon);
+    assert_eq!(item.material, Some(Material::Steel));
+    let label = item.label();
+    assert!(label.starts_with("fine steel "), "got {label:?}");
+    assert!(
+        ItemForm::forms_for(ItemKind::Weapon).iter().any(|f| label.ends_with(f.name())),
+        "label {label:?} should end in a weapon form"
+    );
+    // quality drives the rating; the descriptive form/material do not change it
+    assert_eq!(item.rating(), Item::new(ItemKind::Weapon, Quality::Fine).rating());
+    // and naming is deterministic per seed
+    let mut rng_again = GameRng::seed_from_u64(7);
+    let twin = Item::crafted(ItemKind::Weapon, Quality::Fine, Material::Steel, &mut rng_again);
+    assert_eq!(item.form, twin.form);
+}
+
+#[test]
+fn smiths_of_higher_tier_work_finer_metal() {
+    use fortress_core::Material;
+    assert_eq!(Material::from_smith_tier(0), Material::Bronze);
+    assert_eq!(Material::from_smith_tier(3), Material::Iron);
+    assert_eq!(Material::from_smith_tier(5), Material::Steel);
+    assert_eq!(Material::from_smith_tier(7), Material::Silver);
+}
+
+#[test]
 fn artifacts_never_wear_out() {
     let mut art = Item {
         kind: ItemKind::Weapon,
@@ -1466,6 +1497,8 @@ fn artifacts_never_wear_out() {
         condition: 100,
         artifact: true,
         name: Some("Dawnedge".to_string()),
+        form: None,
+        material: None,
     };
     let rating_before = art.rating();
     art.degrade(500);

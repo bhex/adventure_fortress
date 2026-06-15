@@ -32,8 +32,6 @@ pub enum ResourceKind {
     Valuables,
     Stone,
     Wood,
-    Gear,
-    Tools,
     /// Raw metal from the Mine — the smith's feedstock for forging items.
     Ore,
     /// Demon/portal residue, dropped by demon battles — the only stuff that
@@ -42,13 +40,11 @@ pub enum ResourceKind {
 }
 
 impl ResourceKind {
-    pub const ALL: [ResourceKind; 8] = [
+    pub const ALL: [ResourceKind; 6] = [
         ResourceKind::Food,
         ResourceKind::Valuables,
         ResourceKind::Stone,
         ResourceKind::Wood,
-        ResourceKind::Gear,
-        ResourceKind::Tools,
         ResourceKind::Ore,
         ResourceKind::Residue,
     ];
@@ -59,8 +55,6 @@ impl ResourceKind {
             ResourceKind::Valuables => "valuables",
             ResourceKind::Stone => "stone",
             ResourceKind::Wood => "timber",
-            ResourceKind::Gear => "gear",
-            ResourceKind::Tools => "tools",
             ResourceKind::Ore => "ore",
             ResourceKind::Residue => "residue",
         }
@@ -72,7 +66,7 @@ impl ResourceKind {
             ResourceKind::Food => [1, 16, 31, 61, 101],
             ResourceKind::Valuables => [1, 6, 13, 26, 51],
             ResourceKind::Stone | ResourceKind::Wood => [1, 11, 26, 51, 91],
-            ResourceKind::Gear | ResourceKind::Tools | ResourceKind::Ore => [1, 6, 13, 26, 51],
+            ResourceKind::Ore => [1, 6, 13, 26, 51],
             ResourceKind::Residue => [1, 3, 6, 11, 21],
         }
     }
@@ -114,10 +108,6 @@ pub struct Resources {
     pub stone: i64,
     pub wood: i64,
     #[serde(default)]
-    pub gear: i64,
-    #[serde(default)]
-    pub tools: i64,
-    #[serde(default)]
     pub ore: i64,
     #[serde(default)]
     pub residue: i64,
@@ -137,24 +127,18 @@ pub struct ResourceDelta {
     #[serde(default)]
     pub wood: i64,
     #[serde(default)]
-    pub gear: i64,
-    #[serde(default)]
-    pub tools: i64,
-    #[serde(default)]
     pub ore: i64,
     #[serde(default)]
     pub residue: i64,
 }
 
 impl ResourceDelta {
-    fn fields(&self) -> [(ResourceKind, i64); 8] {
+    fn fields(&self) -> [(ResourceKind, i64); 6] {
         [
             (ResourceKind::Food, self.food),
             (ResourceKind::Valuables, self.valuables),
             (ResourceKind::Stone, self.stone),
             (ResourceKind::Wood, self.wood),
-            (ResourceKind::Gear, self.gear),
-            (ResourceKind::Tools, self.tools),
             (ResourceKind::Ore, self.ore),
             (ResourceKind::Residue, self.residue),
         ]
@@ -170,8 +154,6 @@ impl ResourceDelta {
             valuables: -self.valuables,
             stone: -self.stone,
             wood: -self.wood,
-            gear: -self.gear,
-            tools: -self.tools,
             ore: -self.ore,
             residue: -self.residue,
         }
@@ -215,8 +197,6 @@ impl Resources {
             ResourceKind::Valuables => self.valuables,
             ResourceKind::Stone => self.stone,
             ResourceKind::Wood => self.wood,
-            ResourceKind::Gear => self.gear,
-            ResourceKind::Tools => self.tools,
             ResourceKind::Ore => self.ore,
             ResourceKind::Residue => self.residue,
         }
@@ -231,8 +211,6 @@ impl Resources {
         self.valuables += delta.valuables;
         self.stone += delta.stone;
         self.wood += delta.wood;
-        self.gear += delta.gear;
-        self.tools += delta.tools;
         self.ore += delta.ore;
         self.residue += delta.residue;
         self.clamp();
@@ -243,8 +221,6 @@ impl Resources {
             && self.valuables >= cost.valuables
             && self.stone >= cost.stone
             && self.wood >= cost.wood
-            && self.gear >= cost.gear
-            && self.tools >= cost.tools
             && self.ore >= cost.ore
             && self.residue >= cost.residue
     }
@@ -254,8 +230,6 @@ impl Resources {
         self.valuables = self.valuables.max(0);
         self.stone = self.stone.max(0);
         self.wood = self.wood.max(0);
-        self.gear = self.gear.max(0);
-        self.tools = self.tools.max(0);
         self.ore = self.ore.max(0);
         self.residue = self.residue.max(0);
     }

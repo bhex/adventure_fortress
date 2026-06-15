@@ -448,8 +448,6 @@ fn update_inspect(
                 .unwrap_or_default();
             let stores: Vec<String> = [
                 fortress_core::ResourceKind::Valuables,
-                fortress_core::ResourceKind::Gear,
-                fortress_core::ResourceKind::Tools,
                 fortress_core::ResourceKind::Ore,
                 fortress_core::ResourceKind::Residue,
             ]

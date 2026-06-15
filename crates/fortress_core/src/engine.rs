@@ -338,15 +338,6 @@ pub fn resolve(event: &Event, choice_index: usize, gs: &mut GameState) -> EventR
         gs.apply_reputation_delta(1);
     }
 
-    // Battle spends steel: arms break, arrows fly, edges dull.
-    if event.has_tag("combat") && gs.resources.gear > 0 {
-        let spent = gs.resources.gear.min(3);
-        gs.resources.gear -= spent;
-        if gs.resources.gear == 0 {
-            result.lines.push("The armory stands empty.".to_string());
-        }
-    }
-
     gs.events_resolved += 1;
     result
 }
@@ -534,6 +525,8 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
                 condition: 100,
                 artifact: *artifact,
                 name: name.clone(),
+                form: None,
+                material: None,
             };
             let label = item.label();
             gs.items.add(item);
@@ -611,12 +604,6 @@ pub(crate) fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32
             a.class == crate::adventurers::AdventurerClass::Knight
                 && a.perk_tier() >= SkillTier::Skilled
         }) {
-            h = -((-h * 3) / 4);
-        }
-        // A well-stocked armory: good gear turns blades.
-        if gs.resources.band(crate::resources::ResourceKind::Gear)
-            >= crate::resources::StockBand::Adequate
-        {
             h = -((-h * 3) / 4);
         }
         // Proper armor worn on the wall: a defender in a fine harness (or

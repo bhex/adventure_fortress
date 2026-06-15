@@ -297,7 +297,7 @@
         "description": "Old steel is still steel.",
         "effects": [
           {"kind": "defense", "params": {"amount": 5}},
-          {"kind": "resource", "params": {"gear": 5}},
+          {"kind": "grant_item", "params": {"kind": "weapon", "quality": "fine"}},
           {"kind": "apply_to_role", "params": {"role": "guard", "morale": 8}}
         ]
       },

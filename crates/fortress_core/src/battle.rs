@@ -16,7 +16,7 @@ use crate::game_state::GameState;
 use crate::inhabitants::Role;
 use crate::items::ItemKind;
 use crate::region::DarknessBand;
-use crate::resources::{ResourceDelta, ResourceKind, StockBand};
+use crate::resources::ResourceDelta;
 use crate::skills::Skill;
 use rand::Rng;
 
@@ -252,18 +252,10 @@ fn magic_offense(skills: &crate::skills::SkillSet) -> i32 {
 }
 
 /// Our whole strength this round: every active fighter's push (their own arms
-/// already folded in at muster), plus the bulk armory, the walls, and the day's
-/// heart.
+/// already folded in at muster), plus the walls and the day's heart.
 fn side_strength(active: &[Combatant], gs: &GameState, morale_edge: i32) -> i32 {
     let combat: i32 = active.iter().map(|c| c.push).sum();
-    let gear = match gs.resources.band(ResourceKind::Gear) {
-        StockBand::Exhausted => 0,
-        StockBand::Scarce | StockBand::Lean => 1,
-        StockBand::Adequate => 2,
-        StockBand::Comfortable => 3,
-        StockBand::Plentiful => 4,
-    };
-    combat + gear + gs.fortress.defense / 10 + morale_edge + gs.world.weather.combat_edge()
+    combat + gs.fortress.defense / 10 + morale_edge + gs.world.weather.combat_edge()
 }
 
 /// Pick the round's standout and tell what they did, coloured by the tide.
@@ -347,9 +339,10 @@ fn roll_loot(event: &Event, gs: &mut GameState) -> Vec<String> {
             lines.push(format!("A {} is taken from the fallen.", item.label()));
             gs.items.add(item);
         } else {
-            let gear = gs.rng.random_range(2..=5);
-            gs.resources.apply_delta(&ResourceDelta { gear, ..Default::default() });
-            lines.push(format!("Broken arms are gathered for the smith. (+{gear} gear)"));
+            // Bent, broken arms — no good as they are, but melt down for the forge.
+            let ore = gs.rng.random_range(2..=4);
+            gs.resources.apply_delta(&ResourceDelta { ore, ..Default::default() });
+            lines.push(format!("Broken arms are gathered for the smith to melt down. (+{ore} ore)"));
         }
     }
     lines

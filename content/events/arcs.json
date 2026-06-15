@@ -540,9 +540,10 @@
         "description": "Tribute, it seems, runs both ways.",
         "effects": [
           {
-            "kind": "resource",
+            "kind": "grant_item",
             "params": {
-              "gear": 5
+              "kind": "weapon",
+              "quality": "fine"
             }
           },
           {

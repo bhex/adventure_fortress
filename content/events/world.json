@@ -280,7 +280,7 @@
         "description": "Back their ingenuity.",
         "cost": {"wood": 5},
         "effects": [
-          {"kind": "resource", "params": {"tools": 8}},
+          {"kind": "grant_item", "params": {"kind": "tool", "quality": "fine"}},
           {"kind": "morale", "params": {"amount": 3}}
         ]
       },
@@ -454,7 +454,7 @@
         "label": "Work the seam",
         "description": "Hard labor, hard metal.",
         "effects": [
-          {"kind": "resource", "params": {"gear": 4, "stone": 6}},
+          {"kind": "resource", "params": {"ore": 4, "stone": 6}},
           {"kind": "apply_to_role", "params": {"role": "blacksmith", "morale": 4}}
         ]
       },

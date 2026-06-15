@@ -60,7 +60,7 @@
         "label": "Endure the pests",
         "description": "They'll tire of it. Eventually.",
         "effects": [
-          {"kind": "resource", "params": {"tools": -3, "food": -4}},
+          {"kind": "resource", "params": {"valuables": -3, "food": -4}},
           {"kind": "morale", "params": {"amount": -3}}
         ]
       }

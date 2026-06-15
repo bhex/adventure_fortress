@@ -1,14 +1,20 @@
 //! Equipment: typed, quality-graded, enchantable item objects held in the
-//! fortress armory. Unlike the bulk `gear`/`tools` stockpiles (which back the
-//! garrison's general readiness), items are individual things — a fine sword,
-//! a hexed amulet, a masterwork hauberk — that the best hands take up first.
+//! fortress armory. Items are the *sole* combat and work backbone — individual,
+//! named things: a fine steel sword, a hexed amulet, a masterwork plate harness
+//! — that the best hands take up first.
+//!
+//! Every ordinary item has a `form` (sword, mail, scythe…) and a `material`
+//! (bronze→silver, from the smith's tier), which together with its quality and
+//! enchant make its name ("fine steel longsword"). Forms and materials are
+//! descriptive — quality stays the sole driver of an item's rating.
 //!
 //! Nothing here is assigned by hand. Every day the most capable fighters and
-//! workers auto-equip the best item for their need; combat and work read the
-//! armory's top items directly (`equip_rating`). Items wear with use and must
+//! workers auto-equip the best item for their need (`GameState::redistribute_equipment`);
+//! combat and work read each bearer's own loadout. Items wear with use and must
 //! be kept up at the forge or they break. Artifacts are the exception: rare,
 //! powerful, and beyond ordinary wear.
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -123,6 +129,105 @@ impl Enchant {
     }
 }
 
+/// The shape of a thing — what a weapon, a suit of armor, or a tool actually is.
+/// Purely descriptive: it names the item but never changes its rating (quality
+/// is the sole driver). Each form belongs to exactly one `ItemKind`.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ItemForm {
+    // Weapons
+    Dagger,
+    Sword,
+    Axe,
+    Mace,
+    Spear,
+    // Armor
+    Jerkin,
+    Mail,
+    Plate,
+    Shield,
+    // Tools
+    Hammer,
+    Saw,
+    Pick,
+    Scythe,
+}
+
+impl ItemForm {
+    pub fn name(&self) -> &'static str {
+        match self {
+            ItemForm::Dagger => "dagger",
+            ItemForm::Sword => "sword",
+            ItemForm::Axe => "axe",
+            ItemForm::Mace => "mace",
+            ItemForm::Spear => "spear",
+            ItemForm::Jerkin => "jerkin",
+            ItemForm::Mail => "mail",
+            ItemForm::Plate => "plate",
+            ItemForm::Shield => "shield",
+            ItemForm::Hammer => "hammer",
+            ItemForm::Saw => "saw",
+            ItemForm::Pick => "pick",
+            ItemForm::Scythe => "scythe",
+        }
+    }
+
+    pub fn kind(&self) -> ItemKind {
+        match self {
+            ItemForm::Dagger | ItemForm::Sword | ItemForm::Axe | ItemForm::Mace | ItemForm::Spear => {
+                ItemKind::Weapon
+            }
+            ItemForm::Jerkin | ItemForm::Mail | ItemForm::Plate | ItemForm::Shield => ItemKind::Armor,
+            ItemForm::Hammer | ItemForm::Saw | ItemForm::Pick | ItemForm::Scythe => ItemKind::Tool,
+        }
+    }
+
+    /// The forms a given kind can take, in roughly ascending heft.
+    pub fn forms_for(kind: ItemKind) -> &'static [ItemForm] {
+        match kind {
+            ItemKind::Weapon => {
+                &[ItemForm::Dagger, ItemForm::Sword, ItemForm::Axe, ItemForm::Mace, ItemForm::Spear]
+            }
+            ItemKind::Armor => {
+                &[ItemForm::Jerkin, ItemForm::Mail, ItemForm::Plate, ItemForm::Shield]
+            }
+            ItemKind::Tool => &[ItemForm::Hammer, ItemForm::Saw, ItemForm::Pick, ItemForm::Scythe],
+        }
+    }
+}
+
+/// What a thing is forged from. Picked from the smith's tier at craft time; like
+/// `ItemForm` it colours the name but not the rating.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Material {
+    Bronze,
+    Iron,
+    Steel,
+    Silver,
+}
+
+impl Material {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Material::Bronze => "bronze",
+            Material::Iron => "iron",
+            Material::Steel => "steel",
+            Material::Silver => "silver",
+        }
+    }
+
+    /// The metal a smith of this skill tier (0..7) usually works.
+    pub fn from_smith_tier(tier: u32) -> Material {
+        match tier {
+            0 | 1 => Material::Bronze,
+            2 | 3 => Material::Iron,
+            4 | 5 => Material::Steel,
+            _ => Material::Silver,
+        }
+    }
+}
+
 /// Condition at which an ordinary item finally breaks.
 const BROKEN: i32 = 0;
 const FULL_CONDITION: i32 = 100;
@@ -141,6 +246,12 @@ pub struct Item {
     /// A proper name for artifacts; ordinary items go unnamed.
     #[serde(default)]
     pub name: Option<String>,
+    /// The shape of the thing (sword, mail, scythe…). Descriptive only.
+    #[serde(default)]
+    pub form: Option<ItemForm>,
+    /// What it's forged from (bronze→silver). Descriptive only.
+    #[serde(default)]
+    pub material: Option<Material>,
 }
 
 fn full_condition() -> i32 {
@@ -149,11 +260,29 @@ fn full_condition() -> i32 {
 
 impl Item {
     pub fn new(kind: ItemKind, quality: Quality) -> Item {
-        Item { kind, quality, enchant: None, condition: FULL_CONDITION, artifact: false, name: None }
+        Item {
+            kind,
+            quality,
+            enchant: None,
+            condition: FULL_CONDITION,
+            artifact: false,
+            name: None,
+            form: None,
+            material: None,
+        }
     }
 
     pub fn enchanted(kind: ItemKind, quality: Quality, enchant: Enchant) -> Item {
         Item { enchant: Some(enchant), ..Item::new(kind, quality) }
+    }
+
+    /// A forged item with a form and material — what the smith turns out. The
+    /// form is drawn from the kind's repertoire by the seeded `rng`, the material
+    /// from the smith's tier, giving a descriptive name like "fine steel sword".
+    pub fn crafted(kind: ItemKind, quality: Quality, material: Material, rng: &mut crate::rng::GameRng) -> Item {
+        let forms = ItemForm::forms_for(kind);
+        let form = forms[rng.random_range(0..forms.len())];
+        Item { form: Some(form), material: Some(material), ..Item::new(kind, quality) }
     }
 
     /// What this item is worth to whoever carries it: quality plus enchant,
@@ -186,7 +315,9 @@ impl Item {
         self.condition = (self.condition + amount).min(FULL_CONDITION);
     }
 
-    /// "masterwork keen blade", "the Crown of Vell" — for the log and inspect.
+    /// "fine keen steel sword", "the Crown of Vell" — for the log and inspect.
+    /// Reads quality, then enchant, then material, then the form (or a plain noun
+    /// for items that carry no form, like event-granted or legacy ones).
     pub fn label(&self) -> String {
         if let Some(name) = &self.name {
             return name.clone();
@@ -196,8 +327,12 @@ impl Item {
             s.push(' ');
             s.push_str(e.name());
         }
+        if let Some(m) = self.material {
+            s.push(' ');
+            s.push_str(m.name());
+        }
         s.push(' ');
-        s.push_str(self.kind.noun());
+        s.push_str(self.form.map(|f| f.name()).unwrap_or(self.kind.noun()));
         s
     }
 }

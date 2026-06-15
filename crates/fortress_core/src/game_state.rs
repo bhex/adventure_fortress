@@ -16,7 +16,7 @@ use crate::rng::GameRng;
 use crate::skills::Skill;
 use crate::world::World;
 
-pub const SAVE_VERSION: u32 = 12;
+pub const SAVE_VERSION: u32 = 13;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 
@@ -118,7 +118,7 @@ impl GameState {
             valuables: if player.class == ClassKind::Steward { 14 } else { 8 },
             wood: 20,
             stone: 10,
-            tools: 4,
+            ore: 6,
             ..Default::default()
         });
         for role in [Role::Guard, Role::Farmer, Role::Farmer, Role::Healer] {
@@ -436,40 +436,6 @@ impl GameState {
             }
         }
 
-        // Craftwork: smiths forge gear at the smithy; everyone whittles tools.
-        let smithy_level = self.fortress.building_level(Upgrade::Blacksmith);
-        if smithy_level > 0 {
-            let tier_sum: i64 = self
-                .inhabitants
-                .get_by_role(Role::Blacksmith)
-                .iter()
-                .map(|i| i.skills.tier(Skill::Smithing).index() as i64)
-                .sum();
-            // ×1 / ×1.5 / ×2 by smithy tier, integer math
-            let forged = tier_sum * (smithy_level as i64 + 1) / 2;
-            if forged > 0 && self.resources.gear < 60 {
-                self.resources.apply_delta(&ResourceDelta { gear: forged, ..Default::default() });
-                lines.push("The forge rings; the armory grows.".to_string());
-            }
-        }
-        // Tool output scales with the Workshop: ×1 base, ×1.5/×2/×3 by tier.
-        let whittled: i64 = self
-            .inhabitants
-            .get_alive()
-            .iter()
-            .map(|i| i.skills.tier(Skill::Crafting).index() as i64)
-            .sum::<i64>()
-            * match self.fortress.building_level(Upgrade::Workshop) {
-                0 => 2,
-                1 => 3,
-                2 => 4,
-                _ => 6,
-            }
-            / 2;
-        if whittled > 0 && self.resources.tools < 60 {
-            self.resources.apply_delta(&ResourceDelta { tools: whittled, ..Default::default() });
-        }
-
         // The Lumberyard works the woods.
         let yard_wood = match self.fortress.building_level(Upgrade::Lumberyard) {
             0 => 0,
@@ -527,13 +493,8 @@ impl GameState {
                 .map(|i| i.skills.tier(Skill::Farming).index())
                 .sum::<u32>()
                 / 2;
-            let mut tool_bonus: i64 =
-                if self.resources.band(crate::resources::ResourceKind::Tools) >= crate::resources::StockBand::Adequate {
-                    1
-                } else {
-                    0
-                };
-            // Proper tools in the farmers' own hands work the field harder still.
+            // Proper tools in the farmers' own hands work the field: a fine tool
+            // (or better) lifts the yield, a masterwork more still.
             let best_farmer_tool = self
                 .inhabitants
                 .get_by_role(Role::Farmer)
@@ -541,9 +502,13 @@ impl GameState {
                 .map(|i| i.loadout.rating(ItemKind::Tool))
                 .max()
                 .unwrap_or(0);
-            if best_farmer_tool >= 3 {
-                tool_bonus += 1;
-            }
+            let tool_bonus: i64 = if best_farmer_tool >= 5 {
+                2
+            } else if best_farmer_tool >= 3 {
+                1
+            } else {
+                0
+            };
             // Season and weather decide whether the fields are generous or grim.
             let raw = base + skill_bonus as i64 + tool_bonus;
             let harvest = raw * self.world.farm_mult_pct() / 100;
@@ -907,7 +872,8 @@ impl GameState {
                 }
                 let kind = self.fortress.craft_focus;
                 self.resources.apply_delta(&ResourceDelta { ore: -ORE_PER_ITEM, ..Default::default() });
-                let item = Item::new(kind, quality);
+                let material = crate::items::Material::from_smith_tier(tier);
+                let item = Item::crafted(kind, quality, material, &mut self.rng);
                 lines.push(format!("The forge yields a {}.", item.label()));
                 self.items.add(item);
             }
