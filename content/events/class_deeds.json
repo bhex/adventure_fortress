@@ -1,0 +1,118 @@
+[
+  {
+    "name": "The Black Banner at the Gate",
+    "description": "A raiding host masses beyond the walls under a black banner. The garrison looks to you — how the hold answers this will be told for years.",
+    "tags": ["combat"],
+    "min_day": 8,
+    "weight": 0.3,
+    "choices": [
+      {
+        "label": "Hold the wall and weather it",
+        "description": "Stand the line and trust the stone.",
+        "effects": [
+          {"kind": "battle", "params": {"power": 14, "loot_valuables": 6}}
+        ]
+      },
+      {
+        "label": "[Warlord] Lead a sally from the gate",
+        "description": "Ride out at their head and break the host before it sets.",
+        "requires_class": "Warlord",
+        "effects": [
+          {"kind": "battle", "params": {"power": 10, "loot_valuables": 12}},
+          {"kind": "morale", "params": {"amount": 8}},
+          {"kind": "defense", "params": {"amount": 2}}
+        ]
+      },
+      {
+        "label": "[Sorcerer] Call down ruin upon them",
+        "description": "Raw power, loosed without restraint — and a little of yourself with it.",
+        "requires_class": "Sorcerer",
+        "effects": [
+          {"kind": "battle", "params": {"power": 6, "loot_valuables": 8}},
+          {"kind": "resource", "params": {"residue": -2}},
+          {"kind": "morale", "params": {"amount": -3}}
+        ]
+      },
+      {
+        "label": "[Mystic] Loose them into the dark",
+        "description": "Slip out by night and turn their own fear against them.",
+        "requires_class": "Mystic",
+        "effects": [
+          {"kind": "battle", "params": {"power": 8, "loot_valuables": 10}},
+          {"kind": "region", "params": {"darkness": -2}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Disputed Marches",
+    "description": "A neighboring power presses claims on the borderlands. Envoys wait in the hall for your answer.",
+    "tags": ["diplomacy"],
+    "min_day": 12,
+    "weight": 0.3,
+    "choices": [
+      {
+        "label": "Send gifts and fair words",
+        "description": "Coin smooths most quarrels.",
+        "cost": {"valuables": 8},
+        "effects": [
+          {"kind": "region", "params": {"site_strength": 3}}
+        ]
+      },
+      {
+        "label": "[Steward] Broker a trade that favors us",
+        "description": "Turn the dispute into a contract — and a profit.",
+        "requires_class": "Steward",
+        "effects": [
+          {"kind": "resource", "params": {"valuables": 10, "wood": 8}},
+          {"kind": "region", "params": {"site_strength": 2}}
+        ]
+      },
+      {
+        "label": "[Warlord] A show of force on the line",
+        "description": "March the garrison to the border and let the steel speak.",
+        "requires_class": "Warlord",
+        "effects": [
+          {"kind": "defense", "params": {"amount": 3}},
+          {"kind": "region", "params": {"site_strength": 4}},
+          {"kind": "morale", "params": {"amount": 3}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Whispering Relic",
+    "description": "Diggers turn up a sealed casket that hums with old power. It should not be opened lightly — but it should not be ignored either.",
+    "tags": ["economy"],
+    "min_day": 16,
+    "weight": 0.25,
+    "choices": [
+      {
+        "label": "Lock it deep and forget it",
+        "description": "Some doors are best left shut.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      },
+      {
+        "label": "[Wizard] Study and cleanse it",
+        "description": "Patient warding draws the venom and leaves the gift.",
+        "requires_class": "Wizard",
+        "effects": [
+          {"kind": "resource", "params": {"residue": 3}},
+          {"kind": "morale", "params": {"amount": 4}}
+        ]
+      },
+      {
+        "label": "[Warlock] Bend its power to your will",
+        "description": "Potent, and perilous — the dark always asks a price.",
+        "requires_class": "Warlock",
+        "effects": [
+          {"kind": "resource", "params": {"residue": 6}},
+          {"kind": "morale", "params": {"amount": -6}},
+          {"kind": "region", "params": {"darkness": 3}}
+        ]
+      }
+    ]
+  }
+]

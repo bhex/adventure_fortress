@@ -65,7 +65,9 @@ fn next_filter(f: Option<fortress_core::Role>) -> Option<fortress_core::Role> {
         Some(Role::Blacksmith) => Some(Role::Healer),
         Some(Role::Healer) => Some(Role::Miner),
         Some(Role::Miner) => Some(Role::Peasant),
-        Some(Role::Peasant) => None,
+        Some(Role::Peasant) => Some(Role::Scholar),
+        Some(Role::Scholar) => Some(Role::Herbalist),
+        Some(Role::Herbalist) => None,
     }
 }
 

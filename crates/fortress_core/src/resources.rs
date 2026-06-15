@@ -116,7 +116,7 @@ pub struct Resources {
 /// Matches JSON shapes like {"food": 5, "valuables": -10} — used for effects,
 /// choice costs, and event min_resource gates. "gold" is accepted as a legacy
 /// alias for valuables.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ResourceDelta {
     #[serde(default)]
     pub food: i64,

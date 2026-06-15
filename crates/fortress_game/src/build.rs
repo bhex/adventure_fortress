@@ -81,7 +81,7 @@ fn spawn_menu_ui(commands: &mut Commands, gs: &GameState) {
             overlay
                 .spawn((
                     Node {
-                        width: Val::Px(560.0),
+                        width: Val::Px(900.0),
                         padding: UiRect::all(Val::Px(18.0)),
                         flex_direction: FlexDirection::Column,
                         row_gap: Val::Px(6.0),
@@ -97,65 +97,82 @@ fn spawn_menu_ui(commands: &mut Commands, gs: &GameState) {
                         TEXT_DIM,
                     ));
 
-                    for upgrade in Upgrade::ALL {
-                        let availability = gs.build_availability(upgrade);
-                        let enabled = availability == BuildAvailability::Ok;
-                        let next = gs.fortress.next_build_level(upgrade).unwrap_or(0);
+                    panel.spawn(Node {
+                        width: Val::Percent(100.0),
+                        flex_wrap: FlexWrap::Wrap,
+                        flex_direction: FlexDirection::Row,
+                        justify_content: JustifyContent::SpaceBetween,
+                        ..Default::default()
+                    }).with_children(|grid| {
+                        for upgrade in Upgrade::ALL {
+                            let availability = gs.build_availability(upgrade);
+                            // CantAfford is still clickable — as a pledge to build later.
+                            let clickable = matches!(
+                                availability,
+                                BuildAvailability::Ok | BuildAvailability::CantAfford
+                            );
+                            let next = gs.fortress.next_build_level(upgrade).unwrap_or(0);
 
-                        // current standing: tier numeral, or plots for housing
-                        let standing = if upgrade == Upgrade::Housing {
-                            format!(" ({}/{} plots)", gs.fortress.housing_units(), fortress_core::HOUSING_PLOTS)
-                        } else {
-                            match gs.fortress.building_level(upgrade) {
-                                0 => String::new(),
-                                l => format!(" {}", fortress_core::level_numeral(l)),
-                            }
-                        };
-                        let verb = if gs.fortress.has_upgrade(upgrade) && upgrade != Upgrade::Housing {
-                            format!("upgrade to {}", fortress_core::level_numeral(next))
-                        } else {
-                            "build".to_string()
-                        };
-                        let suffix = match availability {
-                            BuildAvailability::Ok => {
-                                format!("  — {} (costs {})", verb, upgrade.build_cost(next).describe_cost())
-                            }
-                            BuildAvailability::MaxLevel => "  — at its height".to_string(),
-                            BuildAvailability::MissingRole(role) => {
-                                format!("  [needs a {}]", role.name())
-                            }
-                            BuildAvailability::CantAfford => {
-                                format!("  — {} (can't afford: {})", verb, upgrade.build_cost(next).describe_cost())
-                            }
-                            BuildAvailability::InProgress => {
-                                let wf = gs.build_workforce().max(1);
-                                let eta = gs
-                                    .fortress
-                                    .projects
-                                    .iter()
-                                    .find(|p| p.upgrade == upgrade)
-                                    .map(|p| (p.worker_days_remaining + wf - 1) / wf)
-                                    .unwrap_or(0);
-                                format!("  — underway (~{eta} days left)")
-                            }
-                        };
+                            // current standing: tier numeral, or plots for housing
+                            let standing = if upgrade == Upgrade::Housing {
+                                format!(" ({}/{} plots)", gs.fortress.housing_units(), fortress_core::HOUSING_PLOTS)
+                            } else {
+                                match gs.fortress.building_level(upgrade) {
+                                    0 => String::new(),
+                                    l => format!(" {}", fortress_core::level_numeral(l)),
+                                }
+                            };
+                            let verb = if gs.fortress.has_upgrade(upgrade) && upgrade != Upgrade::Housing {
+                                format!("upgrade to {}", fortress_core::level_numeral(next))
+                            } else {
+                                "build".to_string()
+                            };
+                            let suffix = match availability {
+                                BuildAvailability::Ok => {
+                                    format!("  — {} (costs {})", verb, upgrade.build_cost(next).describe_cost())
+                                }
+                                BuildAvailability::MaxLevel => "  — at its height".to_string(),
+                                BuildAvailability::MissingRole(role) => {
+                                    format!("  [needs a {}]", role.name())
+                                }
+                                BuildAvailability::CantAfford => {
+                                    format!("  — pledge to {} (costs {} — click to promise)", verb, upgrade.build_cost(next).describe_cost())
+                                }
+                                BuildAvailability::InProgress => {
+                                    let wf = gs.build_workforce().max(1);
+                                    let eta = gs
+                                        .fortress
+                                        .projects
+                                        .iter()
+                                        .find(|p| p.upgrade == upgrade)
+                                        .map(|p| (p.worker_days_remaining + wf - 1) / wf)
+                                        .unwrap_or(0);
+                                    format!("  — underway (~{eta} days left)")
+                                }
+                            };
 
-                        let mut button = panel.spawn((
-                            BuildButton(upgrade),
-                            Button,
-                            Node {
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::FlexStart,
-                                padding: UiRect::all(Val::Px(8.0)),
-                                margin: UiRect::vertical(Val::Px(1.0)),
-                                ..Default::default()
-                            },
+                            let mut button = grid.spawn((
+                                BuildButton(upgrade),
+                                Button,
+                                Node {
+                                    width: Val::Percent(49.0),
+                                    flex_direction: FlexDirection::Column,
+                                    align_items: AlignItems::FlexStart,
+                                    padding: UiRect::all(Val::Px(8.0)),
+                                    margin: UiRect::vertical(Val::Px(2.0)),
+                                    ..Default::default()
+                                },
                             BackgroundColor(BTN_BG),
                         ));
-                        if !enabled {
+                        if !clickable {
                             button.insert(Disabled);
                         }
-                        let label_color = if enabled { Color::WHITE } else { TEXT_DIM };
+                        let label_color = match availability {
+                            BuildAvailability::Ok => Color::WHITE,
+                            // A pledgeable build reads in amber — promise, don't pay.
+                            BuildAvailability::CantAfford => Color::srgb(0.9, 0.75, 0.35),
+                            _ => TEXT_DIM,
+                        };
 
                         // effect line: current → next; plus what's missing if poor
                         let cur_level = gs.fortress.building_level(upgrade);
@@ -188,11 +205,12 @@ fn spawn_menu_ui(commands: &mut Commands, gs: &GameState) {
                             effect_line
                         };
 
-                        button.with_children(|b| {
-                            b.spawn(text(format!("{}{}{}", upgrade.name(), standing, suffix), 16.0, label_color));
-                            b.spawn(text(detail, 12.0, TEXT_DIM));
-                        });
-                    }
+                            button.with_children(|b| {
+                                b.spawn(text(format!("{}{}{}", upgrade.name(), standing, suffix), 16.0, label_color));
+                                b.spawn(text(detail, 12.0, TEXT_DIM));
+                            });
+                        }
+                    });
 
                     panel
                         .spawn((CloseButton, Button, button_node(), BackgroundColor(BTN_BG)))
@@ -214,7 +232,12 @@ fn build_click(
         if *interaction != Interaction::Pressed || disabled.is_some() {
             continue;
         }
-        if let Ok(line) = game.0.construct(button.0) {
+        // Affordable builds break ground at once; the rest can be pledged.
+        let result = match game.0.build_availability(button.0) {
+            BuildAvailability::CantAfford => game.0.pledge(button.0),
+            _ => game.0.construct(button.0),
+        };
+        if let Ok(line) = result {
             log.push(format!("Day {}: {}", game.0.fortress.day, line));
             // respawn so costs and availability reflect the new state
             for root in roots.iter() {

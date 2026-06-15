@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::fortress::Upgrade;
 use crate::inhabitants::Role;
 use crate::items::{Enchant, ItemKind, Quality};
-use crate::player::StatKind;
+use crate::player::{ClassKind, StatKind};
 use crate::resources::ResourceDelta;
 use crate::world::Season;
 
@@ -88,6 +88,11 @@ pub struct Choice {
     pub cost: ResourceDelta,
     #[serde(default)]
     pub requires_stat: HashMap<StatKind, u8>,
+    /// A class-exclusive resolution: only a commander of this class may take it.
+    /// Lets the warlord storm a gate, the steward broker a deal, a mage unbind a
+    /// curse — others see it greyed with the class named.
+    #[serde(default)]
+    pub requires_class: Option<ClassKind>,
     #[serde(default)]
     pub stat_check: Option<StatCheck>,
     #[serde(default)]

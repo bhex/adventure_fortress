@@ -6,6 +6,9 @@ use crate::resources::ResourceDelta;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Upgrade {
+    /// The heart of the hold — standing from the founding at level 1, raised
+    /// through tiers for more beds, defense, and a higher population cap.
+    Keep,
     Watchtower,
     Farm,
     Infirmary,
@@ -21,6 +24,9 @@ pub enum Upgrade {
     Mine,
     Graveyard,
     WizardTower,
+    Market,
+    Alchemist,
+    Library,
 }
 
 /// Buildings rise once and are then raised through tiers (I → II → III).
@@ -29,7 +35,8 @@ pub const MAX_BUILDING_LEVEL: u8 = 3;
 pub const HOUSING_PLOTS: usize = 4;
 
 impl Upgrade {
-    pub const ALL: [Upgrade; 15] = [
+    pub const ALL: [Upgrade; 19] = [
+        Upgrade::Keep,
         Upgrade::Watchtower,
         Upgrade::Farm,
         Upgrade::Infirmary,
@@ -45,10 +52,14 @@ impl Upgrade {
         Upgrade::Mine,
         Upgrade::Graveyard,
         Upgrade::WizardTower,
+        Upgrade::Market,
+        Upgrade::Alchemist,
+        Upgrade::Library,
     ];
 
     pub fn name(&self) -> &'static str {
         match self {
+            Upgrade::Keep => "Keep",
             Upgrade::Watchtower => "Watchtower",
             Upgrade::Farm => "Farm",
             Upgrade::Infirmary => "Infirmary",
@@ -64,6 +75,9 @@ impl Upgrade {
             Upgrade::Mine => "Mine",
             Upgrade::Graveyard => "Graveyard",
             Upgrade::WizardTower => "Wizard Tower",
+            Upgrade::Market => "Market",
+            Upgrade::Alchemist => "Alchemist",
+            Upgrade::Library => "Library",
         }
     }
 
@@ -71,6 +85,9 @@ impl Upgrade {
     /// Tier costs grow ~×1.6 per level; housing always pays the base price.
     pub fn build_cost(&self, level: u8) -> ResourceDelta {
         let (food, wood, stone) = match self {
+            // The grandest works of the hold — only ever paid for at tier II/III,
+            // since level I stands from the founding.
+            Upgrade::Keep => (0, 20, 20),
             Upgrade::Watchtower => (0, 10, 8),
             Upgrade::Farm => (0, 15, 0),
             Upgrade::Infirmary => (0, 12, 5),
@@ -86,6 +103,9 @@ impl Upgrade {
             Upgrade::Mine => (0, 14, 6),
             Upgrade::Graveyard => (0, 4, 10),
             Upgrade::WizardTower => (0, 12, 16),
+            Upgrade::Market => (0, 10, 10),
+            Upgrade::Alchemist => (0, 8, 12),
+            Upgrade::Library => (0, 15, 10),
         };
         let (num, den): (i64, i64) = match level {
             0 | 1 => (1, 1),
@@ -101,8 +121,9 @@ impl Upgrade {
     pub fn build_worker_days(&self, level: u8) -> i32 {
         let base = match self {
             Upgrade::Housing | Upgrade::Farm | Upgrade::Graveyard => 3,
-            Upgrade::Watchtower | Upgrade::Lumberyard | Upgrade::Tavern => 4,
-            Upgrade::Barracks | Upgrade::Mine | Upgrade::WizardTower => 6,
+            Upgrade::Watchtower | Upgrade::Lumberyard | Upgrade::Tavern | Upgrade::Market => 4,
+            Upgrade::Barracks | Upgrade::Mine | Upgrade::WizardTower | Upgrade::Alchemist | Upgrade::Library => 6,
+            Upgrade::Keep => 8, // the great work — long in the raising
             _ => 5,
         };
         base + (level.saturating_sub(1) as i32) * 2
@@ -115,13 +136,17 @@ impl Upgrade {
             Upgrade::Infirmary | Upgrade::Shrine => Some(Role::Healer),
             Upgrade::Blacksmith => Some(Role::Blacksmith),
             Upgrade::Barracks | Upgrade::TrainingYard => Some(Role::Guard),
-            Upgrade::Watchtower
+            Upgrade::Alchemist => Some(Role::Herbalist),
+            Upgrade::Library => Some(Role::Scholar),
+            Upgrade::Keep
+            | Upgrade::Watchtower
             | Upgrade::Granary
             | Upgrade::Housing
             | Upgrade::Tavern
             | Upgrade::Workshop
             | Upgrade::Mine
             | Upgrade::Graveyard
+            | Upgrade::Market
             | Upgrade::WizardTower => None,
         }
     }
@@ -131,6 +156,12 @@ impl Upgrade {
     pub fn effect_summary(&self, level: u8) -> String {
         let lvl = level.max(1);
         match self {
+            Upgrade::Keep => format!(
+                "+{} beds, +{} defense, +{} max pop",
+                [6, 10, 14][(lvl - 1).min(2) as usize],
+                [0, 6, 12][(lvl - 1).min(2) as usize],
+                [0, 6, 14][(lvl - 1).min(2) as usize],
+            ),
             Upgrade::Watchtower => format!("+{} defense", [5, 8, 12][(lvl - 1).min(2) as usize]),
             Upgrade::Farm => format!("+{} food/day", [3, 5, 7][(lvl - 1).min(2) as usize]),
             Upgrade::Infirmary => "heals the wounded; disasters hit softer".to_string(),
@@ -146,6 +177,9 @@ impl Upgrade {
             Upgrade::Mine => format!("+{} stone/day", [3, 5, 8][(lvl - 1).min(2) as usize]),
             Upgrade::Graveyard => "honors the dead; eases grief".to_string(),
             Upgrade::WizardTower => "a seat for magic; enchanting".to_string(),
+            Upgrade::Market => "trades excess resources for valuables".to_string(),
+            Upgrade::Alchemist => "brews helpful potions, heals the sick".to_string(),
+            Upgrade::Library => "trains scholars and speeds magic".to_string(),
         }
     }
 }
@@ -254,6 +288,14 @@ pub struct BuildProject {
     pub upgrade: Upgrade,
     pub target_level: u8,
     pub worker_days_remaining: i32,
+    /// A *pledged* project: ground promised but the materials not yet to hand.
+    /// It holds its place in the queue and draws no labor until the hold can
+    /// finally afford `materials_owed` (paid in full, in one day — see
+    /// `GameState::pay_pledged_projects`), at which point it becomes ordinary.
+    #[serde(default)]
+    pub pledged: bool,
+    #[serde(default)]
+    pub materials_owed: ResourceDelta,
 }
 
 /// "I", "II", "III" — the steward chisels tiers above the door.
@@ -339,18 +381,34 @@ impl Fortress {
             upgrade: kind,
             target_level,
             worker_days_remaining: kind.build_worker_days(target_level),
+            pledged: false,
+            materials_owed: ResourceDelta::default(),
         });
     }
 
-    /// Put a day's `workforce` into the front project. Returns the upgrades that
-    /// completed today (usually none or one), to be applied by the caller.
+    /// Promise a build the hold can't yet pay for: it joins the queue but draws
+    /// no labor until its `materials_owed` is met (see `pay_pledged_projects`).
+    pub fn pledge_project(&mut self, kind: Upgrade, target_level: u8, cost: ResourceDelta) {
+        self.projects.push(BuildProject {
+            upgrade: kind,
+            target_level,
+            worker_days_remaining: kind.build_worker_days(target_level),
+            pledged: true,
+            materials_owed: cost,
+        });
+    }
+
+    /// Put a day's `workforce` into the first *funded* project. Returns the
+    /// upgrades that completed today (usually none or one), to be applied by the
+    /// caller. Pledged projects are skipped — they draw no labor until paid.
     pub fn advance_projects(&mut self, workforce: i32) -> Vec<Upgrade> {
         let mut done = Vec::new();
-        if let Some(project) = self.projects.first_mut() {
+        if let Some(idx) = self.projects.iter().position(|p| !p.pledged) {
+            let project = &mut self.projects[idx];
             project.worker_days_remaining -= workforce.max(1);
             if project.worker_days_remaining <= 0 {
                 done.push(project.upgrade);
-                self.projects.remove(0);
+                self.projects.remove(idx);
             }
         }
         done
@@ -394,6 +452,12 @@ impl Fortress {
             self.buildings.push(Building { kind, level: 1 });
             return BuildOutcome::Built;
         }
+        // The Keep stands at level I from the founding without a stored entry;
+        // the first "build" is really the raising to tier II.
+        if kind == Upgrade::Keep && !self.has_upgrade(Upgrade::Keep) {
+            self.buildings.push(Building { kind, level: 2 });
+            return BuildOutcome::Upgraded(2);
+        }
         match self.buildings.iter_mut().find(|b| b.kind == kind) {
             Some(b) if b.level >= MAX_BUILDING_LEVEL => BuildOutcome::AtMax,
             Some(b) => {
@@ -420,11 +484,21 @@ impl Fortress {
         self.buildings.iter().filter(|b| b.kind == Upgrade::Housing).count()
     }
 
+    /// The Keep's tier — level I from the founding even with no stored entry.
+    pub fn keep_level(&self) -> u8 {
+        self.building_level(Upgrade::Keep).max(1)
+    }
+
     /// The level a fresh build/upgrade would reach, or None when nothing
     /// more can rise (tier III, or all housing plots taken).
     pub fn next_build_level(&self, kind: Upgrade) -> Option<u8> {
         if kind == Upgrade::Housing {
             return (self.housing_units() < HOUSING_PLOTS).then_some(1);
+        }
+        if kind == Upgrade::Keep {
+            // Level I stands already; the next build is II, then III.
+            let lvl = self.keep_level();
+            return (lvl < MAX_BUILDING_LEVEL).then_some(lvl + 1);
         }
         match self.building_level(kind) {
             0 => Some(1),
@@ -433,10 +507,12 @@ impl Fortress {
         }
     }
 
-    /// Beds available: the Keep sleeps 6; the Barracks bunks grow with its
-    /// tier; every housing plot shelters 5. Overflow sleeps rough.
+    /// Beds available: the Keep sleeps more as it is raised (6/10/14 by tier);
+    /// the Barracks bunks grow with its tier; every housing plot shelters 6.
+    /// Overflow sleeps rough.
     pub fn sleeping_capacity(&self) -> u32 {
-        let mut beds = 6; // the Keep's own beds
+        // The Keep's own beds grow with its tier.
+        let mut beds = [6, 10, 14][(self.keep_level() - 1).min(2) as usize];
         // The Barracks is built for numbers — plain bunks, but it sleeps a crowd.
         beds += match self.building_level(Upgrade::Barracks) {
             0 => 0,
@@ -445,11 +521,14 @@ impl Fortress {
             _ => 24,
         };
         beds += self.housing_units() as u32 * 6;
-        // Every other standing building keeps a few cots for its workers.
+        // Every other standing building keeps a few cots for its workers (the
+        // Keep's own beds are already counted above).
         let workshops = self
             .buildings
             .iter()
-            .filter(|b| b.kind != Upgrade::Barracks && b.kind != Upgrade::Housing)
+            .filter(|b| {
+                b.kind != Upgrade::Barracks && b.kind != Upgrade::Housing && b.kind != Upgrade::Keep
+            })
             .count() as u32;
         beds += workshops * 2;
         beds

@@ -1,0 +1,170 @@
+[
+  {
+    "name": "A Folio in the Stacks",
+    "description": "Your scholars turn up a water-stained folio in the Library — fragments of old lore on the nature of the dark.",
+    "tags": ["diplomacy"],
+    "requires_upgrade": "Library",
+    "min_day": 14,
+    "weight": 0.3,
+    "choices": [
+      {
+        "label": "Pore over the pages",
+        "description": "Knowledge is its own ward.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 3}},
+          {"kind": "region", "params": {"darkness": -2}}
+        ]
+      },
+      {
+        "label": "Copy it for the archives",
+        "description": "Slow work, but it spreads the hold's renown among the learned.",
+        "cost": {"valuables": 4},
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "scholar", "morale": 6}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "The Bubbling Cauldron",
+    "description": "An experiment in the Alchemist's workshop has filled the halls with a strange, sweet smoke.",
+    "tags": ["economy"],
+    "requires_upgrade": "Alchemist",
+    "min_day": 16,
+    "weight": 0.25,
+    "choices": [
+      {
+        "label": "Bottle the draught",
+        "description": "Whatever it is, the people could use a tonic.",
+        "effects": [
+          {"kind": "apply_to_role", "params": {"role": "peasant", "health": 10, "morale": 4}}
+        ]
+      },
+      {
+        "label": "Let the herbalist test it first",
+        "description": "Better a careful sip than a poisoned hall.",
+        "stat_check": {
+          "stat": "wit",
+          "difficulty": 7,
+          "success_effects": [
+            {"kind": "morale", "params": {"amount": 6}},
+            {"kind": "resource", "params": {"valuables": 4}}
+          ],
+          "failure_effects": [
+            {"kind": "apply_to_role", "params": {"role": "herbalist", "health": -15}}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "A Wealthy Caravan",
+    "description": "Word of your Market has drawn a well-laden caravan to the gates, eager to deal.",
+    "tags": ["economy", "diplomacy"],
+    "requires_upgrade": "Market",
+    "min_day": 12,
+    "weight": 0.3,
+    "choices": [
+      {
+        "label": "Buy timber and stone",
+        "description": "Stock the yards for the building season.",
+        "cost": {"valuables": 10},
+        "effects": [
+          {"kind": "resource", "params": {"wood": 14, "stone": 10}}
+        ]
+      },
+      {
+        "label": "Sell off surplus ore",
+        "description": "Turn the spoil-heaps into coin.",
+        "cost": {"ore": 8},
+        "effects": [
+          {"kind": "resource", "params": {"valuables": 12}}
+        ]
+      },
+      {
+        "label": "Wave them on",
+        "description": "We need nothing today.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 1}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Deep Delving",
+    "description": "The miners report a rich vein deeper than they've cut before — but the rock above it groans.",
+    "tags": ["economy"],
+    "requires_upgrade": "Mine",
+    "requires_role": "miner",
+    "min_day": 10,
+    "weight": 0.3,
+    "choices": [
+      {
+        "label": "Shore the tunnel and dig",
+        "description": "Timber and care before greed.",
+        "cost": {"wood": 6},
+        "effects": [
+          {"kind": "resource", "params": {"ore": 14, "stone": 8}}
+        ]
+      },
+      {
+        "label": "Chase the vein at speed",
+        "description": "The ore is worth the gamble — or it isn't.",
+        "stat_check": {
+          "stat": "might",
+          "difficulty": 8,
+          "success_effects": [
+            {"kind": "resource", "params": {"ore": 22}}
+          ],
+          "failure_effects": [
+            {"kind": "kill_inhabitant", "params": {"role": "miner"}},
+            {"kind": "resource", "params": {"ore": 8}}
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Vigil for the Fallen",
+    "description": "The hold gathers at the Graveyard to honor those lost to the long war. The rite steadies grieving hearts.",
+    "tags": [],
+    "requires_upgrade": "Graveyard",
+    "min_day": 8,
+    "weight": 0.25,
+    "choices": [
+      {
+        "label": "Keep the vigil through the night",
+        "description": "Let no name go unspoken.",
+        "effects": [
+          {"kind": "morale", "params": {"amount": 6}}
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Arcane Resonance",
+    "description": "The Wizard Tower thrums with a tide of loose power drawn in from the rifts. It will not last — best used now.",
+    "tags": ["demon"],
+    "requires_upgrade": "WizardTower",
+    "min_day": 18,
+    "min_darkness": 30,
+    "weight": 0.3,
+    "choices": [
+      {
+        "label": "Bind the surge into residue",
+        "description": "Capture the power for the enchanter's bench.",
+        "effects": [
+          {"kind": "resource", "params": {"residue": 5}}
+        ]
+      },
+      {
+        "label": "Turn it against the dark",
+        "description": "Spend it all in one warding pulse.",
+        "effects": [
+          {"kind": "region", "params": {"darkness": -5, "pressure": -3}},
+          {"kind": "morale", "params": {"amount": 2}}
+        ]
+      }
+    ]
+  }
+]

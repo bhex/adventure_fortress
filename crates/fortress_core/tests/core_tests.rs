@@ -47,6 +47,7 @@ fn simple_choice(effects: Vec<Effect>) -> Choice {
         effects,
         cost: ResourceDelta::default(),
         requires_stat: Default::default(),
+        requires_class: None,
         stat_check: None,
         flavor: None,
     }
@@ -342,6 +343,104 @@ fn starvation_drains_morale() {
 }
 
 #[test]
+fn famine_deepens_and_then_breaks() {
+    let mut gs = test_state();
+    gs.resources.food = 0;
+    for n in 0..6 {
+        gs.inhabitants.add(guard(&format!("G{n}")));
+    }
+    // A sustained famine: the toll deepens and the weakest waste away.
+    for _ in 0..5 {
+        gs.resources.food = 0;
+        gs.apply_daily_effects();
+    }
+    assert_eq!(gs.famine_days, 5, "five consecutive dry days");
+    assert!(gs.inhabitants.count_dead() >= 1, "a sustained famine kills");
+
+    // Feed them and the famine breaks; the counter resets.
+    gs.resources.food = 500;
+    gs.apply_daily_effects();
+    assert_eq!(gs.famine_days, 0, "a fed hold ends the famine");
+    assert!(!gs.flags.contains("famine_crisis"));
+}
+
+#[test]
+fn deep_famine_raises_the_crisis_flag() {
+    let mut gs = test_state();
+    for n in 0..8 {
+        gs.inhabitants.add(guard(&format!("G{n}")));
+    }
+    // Four dry days tips the hold into the grim cascade.
+    for _ in 0..4 {
+        gs.resources.food = 0;
+        gs.apply_daily_effects();
+    }
+    assert!(gs.flags.contains("famine_crisis"), "deep famine raises the crisis flag");
+}
+
+#[test]
+fn a_pledged_build_waits_for_materials_then_funds_itself() {
+    let mut gs = test_state();
+    // Strip the hold bare so the Watchtower is unaffordable.
+    gs.resources = Resources::default();
+    gs.resources.food = 50;
+    assert_eq!(gs.build_availability(Upgrade::Watchtower), BuildAvailability::CantAfford);
+
+    // Promise it: the project joins the queue, pledged, drawing no labor.
+    gs.pledge(Upgrade::Watchtower).expect("pledge accepted");
+    assert!(gs.fortress.has_project(Upgrade::Watchtower));
+    assert!(gs.fortress.projects[0].pledged);
+
+    // A dry day makes no progress on a pledge.
+    let owed = gs.fortress.projects[0].worker_days_remaining;
+    gs.apply_daily_effects();
+    assert!(gs.fortress.projects[0].pledged, "still unfunded");
+    assert_eq!(gs.fortress.projects[0].worker_days_remaining, owed, "no labor while pledged");
+
+    // Deliver the materials; next tick funds the pledge and labor begins.
+    gs.resources.apply_delta(&Upgrade::Watchtower.build_cost(1));
+    gs.resources.food = 50;
+    gs.apply_daily_effects();
+    assert!(!gs.fortress.projects.is_empty(), "still building");
+    assert!(!gs.fortress.projects[0].pledged, "pledge funded");
+    assert!(gs.fortress.projects[0].worker_days_remaining < owed, "labor now flowing");
+}
+
+#[test]
+fn market_buys_in_scarce_materials_with_valuables() {
+    let mut gs = test_state();
+    gs.fortress.add_building(Upgrade::Market); // level 1, limit 5
+    gs.resources.wood = 0;
+    gs.resources.ore = 0;
+    gs.resources.valuables = 50;
+    gs.apply_daily_effects();
+    // Spends up to the limit on each staple: 5 valuables -> 10 wood, 5 -> 5 ore.
+    assert!(gs.resources.wood >= 10, "wood bought in: {}", gs.resources.wood);
+    assert!(gs.resources.ore >= 5, "ore bought in: {}", gs.resources.ore);
+    assert!(gs.resources.valuables <= 40, "valuables spent: {}", gs.resources.valuables);
+}
+
+#[test]
+fn class_gated_choice_locks_to_the_right_commander() {
+    let mut warlord_choice = simple_choice(vec![Effect::Morale { amount: 5 }]);
+    warlord_choice.requires_class = Some(ClassKind::Warlord);
+    let event = make_event(vec![warlord_choice], vec![]);
+
+    // A Steward can't take the warlord's option.
+    let mut gs = test_state();
+    gs.player = Some(player_with(3, ClassKind::Steward));
+    assert!(matches!(
+        choice_availability(&event.choices[0], &event, &gs),
+        ChoiceAvailability::ClassLocked(ClassKind::Warlord)
+    ));
+
+    // A Warlord can.
+    let mut gs2 = test_state();
+    gs2.player = Some(player_with(3, ClassKind::Warlord));
+    assert_eq!(choice_availability(&event.choices[0], &event, &gs2), ChoiceAvailability::Ok);
+}
+
+#[test]
 fn morale_cascade_bands() {
     let mut gs = test_state();
     let mut happy = guard("Happy");
@@ -358,6 +457,30 @@ fn morale_cascade_bands() {
     gs2.apply_daily_effects();
     // -2 cascade, +1 sleeps-warm
     assert_eq!(gs2.fortress.morale, 49);
+}
+
+#[test]
+fn the_keep_stands_at_tier_one_and_is_upgradeable() {
+    let mut gs = test_state();
+    // From the founding the Keep is level I — no stored entry, but it counts.
+    assert_eq!(gs.fortress.keep_level(), 1);
+    assert!(!gs.fortress.has_upgrade(Upgrade::Keep));
+    assert_eq!(gs.fortress.next_build_level(Upgrade::Keep), Some(2));
+    let beds_before = gs.fortress.sleeping_capacity();
+    let def_before = gs.fortress.defense;
+    let pop_before = gs.fortress.max_population;
+
+    // Raise it to tier II: more beds, defense, and population room.
+    gs.build_upgrade(Upgrade::Keep);
+    assert_eq!(gs.fortress.keep_level(), 2);
+    assert!(gs.fortress.sleeping_capacity() > beds_before);
+    assert!(gs.fortress.defense > def_before);
+    assert!(gs.fortress.max_population > pop_before);
+
+    // And to tier III, then no further.
+    gs.build_upgrade(Upgrade::Keep);
+    assert_eq!(gs.fortress.keep_level(), 3);
+    assert_eq!(gs.fortress.next_build_level(Upgrade::Keep), None);
 }
 
 #[test]
@@ -935,6 +1058,47 @@ fn battle_is_deterministic_per_seed() {
 }
 
 #[test]
+fn each_class_brings_its_own_doctrine_to_the_wall() {
+    // The commander's class colours the muster narration distinctly, and the
+    // same class on the same seed plays out bit-for-bit identically.
+    let run = |class: ClassKind| {
+        let mut gs = GameState::new(5);
+        gs.player = Some(PlayerCharacter::new("Cmd", class, Stats { might: 4, wit: 4, heart: 4 }));
+        for n in 0..2 {
+            gs.inhabitants.add(guard(&format!("G{n}")));
+        }
+        fight_battle(16, 0, &battle_event(vec!["combat"]), &mut gs).lines
+    };
+    assert!(run(ClassKind::Warlord).iter().any(|l| l.contains("Warlord's banner")));
+    assert!(run(ClassKind::Sorcerer).iter().any(|l| l.contains("thunderclap")));
+    assert!(run(ClassKind::Steward).iter().any(|l| l.contains("Steward's preparations")));
+    // Determinism per class.
+    assert_eq!(run(ClassKind::Mystic), run(ClassKind::Mystic));
+}
+
+#[test]
+fn the_warlords_rally_wins_more_than_a_bare_garrison() {
+    // The same close fight is won more often with a Warlord present than with no
+    // commander at all — the doctrine is doing real work, not just narrating.
+    let win = |seed: u64, with_warlord: bool| {
+        let mut gs = GameState::new(seed);
+        if with_warlord {
+            gs.player =
+                Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats { might: 4, wit: 3, heart: 3 }));
+        }
+        for n in 0..2 {
+            let mut g = guard(&format!("G{n}"));
+            g.skills.train(Skill::Combat, 50);
+            gs.inhabitants.add(g);
+        }
+        fight_battle(14, 0, &battle_event(vec!["combat"]), &mut gs).victory
+    };
+    let bare = (0..200u64).filter(|s| win(*s, false)).count();
+    let rallied = (0..200u64).filter(|s| win(*s, true)).count();
+    assert!(rallied > bare, "the Warlord's rally should win more: {rallied} vs {bare}");
+}
+
+#[test]
 fn strong_garrison_routs_a_weak_foe() {
     let mut gs = test_state();
     gs.player =
@@ -974,7 +1138,9 @@ fn demon_battles_are_deadlier_in_deep_darkness() {
             gs.inhabitants.add(g);
         }
         gs.region.darkness = darkness;
-        fight_battle(16, 0, &battle_event(vec!["combat", "demon"]), &mut gs).victory
+        // A foe stout enough that the fight stays in the sensitive band even
+        // with the Warlord's standing doctrine — so darkness still tells.
+        fight_battle(24, 0, &battle_event(vec!["combat", "demon"]), &mut gs).victory
     };
     let wins_quiet = (0..200u64).filter(|s| win(*s, 0)).count();
     let wins_deep = (0..200u64).filter(|s| win(*s, 90)).count();
@@ -1659,7 +1825,7 @@ fn high_morale_wins_more_fights() {
             gs.inhabitants.add(g);
         }
         // re-pin morale (the muster reads it; tick doesn't run here)
-        fight_battle(11, 0, &battle_event(vec!["combat"]), &mut gs).victory
+        fight_battle(16, 0, &battle_event(vec!["combat"]), &mut gs).victory
     };
     let low = (0..200u64).filter(|s| win(*s, 15)).count();
     let high = (0..200u64).filter(|s| win(*s, 90)).count();
@@ -1748,7 +1914,7 @@ fn storms_hamper_the_defenders() {
             g.skills.train(Skill::Combat, 50);
             gs.inhabitants.add(g);
         }
-        fight_battle(11, 0, &battle_event(vec!["combat"]), &mut gs).victory
+        fight_battle(16, 0, &battle_event(vec!["combat"]), &mut gs).victory
     };
     let clear = (0..200u64).filter(|s| win(*s, Weather::Clear)).count();
     let storm = (0..200u64).filter(|s| win(*s, Weather::Storm)).count();
