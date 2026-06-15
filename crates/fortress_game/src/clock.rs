@@ -6,9 +6,9 @@
 use bevy::prelude::*;
 use rand::Rng;
 
-use fortress_core::{resolve, roll};
+use fortress_core::{auto_pick, resolve, roll};
 
-use crate::bridge::{finish_day, ActiveEvent, EngineCtl, EventDeck, Game, GameLog};
+use crate::bridge::{finish_day, ActiveEvent, AutoMode, EngineCtl, EventDeck, Game, GameLog};
 use crate::AppState;
 
 pub struct ClockPlugin;
@@ -20,7 +20,7 @@ impl Plugin for ClockPlugin {
             .add_systems(OnExit(AppState::FortressView), pause_clock)
             .add_systems(
                 Update,
-                (tick_clock, speed_hotkeys).run_if(in_state(AppState::FortressView)),
+                (tick_clock, speed_hotkeys, auto_toggle).run_if(in_state(AppState::FortressView)),
             );
     }
 }
@@ -135,6 +135,7 @@ fn tick_clock(
     mut game: ResMut<Game>,
     mut ctl: ResMut<EngineCtl>,
     mut log: ResMut<GameLog>,
+    auto: Res<AutoMode>,
     mut next_state: ResMut<NextState<AppState>>,
 ) {
     let rate = if clock.skipping {
@@ -173,10 +174,25 @@ fn tick_clock(
         if clock.hour >= fire_at {
             clock.event_hour = None;
             if let Some(event) = ctl.pending_event.take() {
-                // Auto events need no decision: resolve the lone choice straight
-                // to the log and let the day run on, no modal.
-                if event.auto {
-                    let result = resolve(&event, 0, &mut game.0);
+                // Three ways an event can settle without a modal: it's an auto
+                // event (one foregone choice), or auto-mode is on (the engine
+                // picks for us), or no choice is available. Otherwise, pause for
+                // the player's decision.
+                let auto_choice = if event.auto {
+                    Some(0)
+                } else if auto.0 {
+                    auto_pick(&event, &game.0).or(Some(0))
+                } else {
+                    None
+                };
+                if let Some(idx) = auto_choice {
+                    let result = resolve(&event, idx, &mut game.0);
+                    if !event.auto {
+                        log.push(format!(
+                            "Day {}: {} — {} (auto)",
+                            game.0.fortress.day, result.event_name, result.choice_label
+                        ));
+                    }
                     for line in result.lines {
                         log.push(format!("Day {}: {}", game.0.fortress.day, line));
                     }
@@ -218,5 +234,18 @@ fn speed_hotkeys(keys: Res<ButtonInput<KeyCode>>, mut clock: ResMut<GameClock>) 
     }
     if keys.just_pressed(KeyCode::Digit2) {
         clock.speed = ClockSpeed::Fast;
+    }
+}
+
+/// Press A to hand the reins to the engine (Progress-Quest auto-play), or take
+/// them back. Auto-resolved events skip the modal; the clock keeps running.
+fn auto_toggle(keys: Res<ButtonInput<KeyCode>>, mut auto: ResMut<AutoMode>, mut log: ResMut<GameLog>) {
+    if keys.just_pressed(KeyCode::KeyA) {
+        auto.0 = !auto.0;
+        log.push(if auto.0 {
+            "Auto-mode ON — the fortress runs itself.".to_string()
+        } else {
+            "Auto-mode OFF — you have the reins again.".to_string()
+        });
     }
 }

@@ -1,10 +1,8 @@
-//! Headless simulation: plays a run picking the first available choice.
+//! Headless simulation: plays a run with the same auto-mode picker the game
+//! uses, so this doubles as a Progress-Quest-style auto-play demo.
 //! Usage: cargo run -p fortress_core --example sim [seed] [max_days]
 
-use fortress_core::{
-    choice_availability, content, resolve, roll, ChoiceAvailability, ClassKind, GameState,
-    PlayerCharacter, Stats,
-};
+use fortress_core::{auto_pick, content, resolve, roll, ClassKind, GameState, PlayerCharacter, Stats};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -27,10 +25,7 @@ fn main() {
         let day = gs.fortress.day;
         if let Some(event) = roll(&deck, day, &mut gs, last_event.as_deref()).cloned() {
             last_event = Some(event.name.clone());
-            let pick = (0..event.choices.len()).find(|&i| {
-                choice_availability(&event.choices[i], &event, &gs) == ChoiceAvailability::Ok
-            });
-            match pick {
+            match auto_pick(&event, &gs) {
                 Some(i) => {
                     let result = resolve(&event, i, &mut gs);
                     println!("Day {day}: {} -> {}", event.name, result.choice_label);

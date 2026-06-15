@@ -5,7 +5,7 @@ use bevy::prelude::*;
 
 use fortress_core::{Role, Upgrade};
 
-use crate::bridge::{Game, GameLog, Selected, Selection};
+use crate::bridge::{AutoMode, Game, GameLog, Selected, Selection};
 use crate::clock::{ClockSpeed, DayPhase, GameClock};
 use crate::AppState;
 
@@ -24,6 +24,7 @@ impl Plugin for HudPlugin {
                     speed_buttons,
                     build_hud_button,
                     region_hud_button,
+                    auto_hud_button,
                 )
                     .run_if(in_state(AppState::FortressView)),
             );
@@ -114,6 +115,9 @@ struct BuildHudButton;
 #[derive(Component)]
 struct RegionHudButton;
 
+#[derive(Component)]
+struct AutoHudButton;
+
 fn spawn_hud(mut commands: Commands) {
     // top bar
     commands
@@ -171,6 +175,22 @@ fn spawn_hud(mut commands: Commands) {
                         ))
                         .with_children(|b| {
                             b.spawn(text("region (R)", 14.0, Color::WHITE));
+                        });
+                    cluster
+                        .spawn((
+                            AutoHudButton,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
+                                margin: UiRect::all(Val::Px(2.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..Default::default()
+                            },
+                            BackgroundColor(BTN_BG),
+                        ))
+                        .with_children(|b| {
+                            b.spawn(text("auto (A)", 14.0, Color::WHITE));
                         });
                     cluster.spawn((ClockText, text("", 16.0, ACCENT)));
                     for (which, label) in [
@@ -237,7 +257,11 @@ fn spawn_hud(mut commands: Commands) {
         });
 }
 
-fn update_hud_text(game: Res<Game>, mut query: Query<&mut Text, With<HudText>>) {
+fn update_hud_text(
+    game: Res<Game>,
+    auto: Res<AutoMode>,
+    mut query: Query<&mut Text, With<HudText>>,
+) {
     let Ok(mut t) = query.single_mut() else { return };
     let gs = &game.0;
     // hybrid: exact number + band word, e.g. "food 34 (adequate)"
@@ -254,10 +278,12 @@ fn update_hud_text(game: Res<Game>, mut query: Query<&mut Text, With<HudText>>) 
     let filled = (dark / 10) as usize;
     let gauge = format!("{}{}", "█".repeat(filled), "░".repeat(10 - filled));
     **t = format!(
-        "Day {} — {}  |  {}  |  Morale {}  Def {}  |  Pop {}/{}  |  {}  |  Dark {} {} ({})",
+        "Day {} — {} ({})  |  {}{}  |  Morale {}  Def {}  |  Pop {}/{}  |  {}  |  Dark {} {} ({})",
         gs.fortress.day,
         gs.fortress.name,
+        gs.fortress.settlement_tier.name(),
         gs.world.describe(),
+        if auto.0 { "  [AUTO]" } else { "" },
         gs.fortress.morale,
         gs.fortress.defense,
         gs.inhabitants.count_alive(),
@@ -556,6 +582,21 @@ fn region_hud_button(
 ) {
     if interactions.iter().any(|i| *i == Interaction::Pressed) {
         next_state.set(AppState::RegionView);
+    }
+}
+
+fn auto_hud_button(
+    interactions: Query<&Interaction, (Changed<Interaction>, With<AutoHudButton>)>,
+    mut auto: ResMut<AutoMode>,
+    mut log: ResMut<GameLog>,
+) {
+    if interactions.iter().any(|i| *i == Interaction::Pressed) {
+        auto.0 = !auto.0;
+        log.push(if auto.0 {
+            "Auto-mode ON — the fortress runs itself.".to_string()
+        } else {
+            "Auto-mode OFF — you have the reins again.".to_string()
+        });
     }
 }
 

@@ -16,7 +16,7 @@ use crate::rng::GameRng;
 use crate::skills::Skill;
 use crate::world::World;
 
-pub const SAVE_VERSION: u32 = 9;
+pub const SAVE_VERSION: u32 = 10;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 
@@ -614,6 +614,17 @@ impl GameState {
             if player.class == ClassKind::Mystic && avg >= 50 {
                 self.fortress.apply_morale_delta(1);
             }
+        }
+
+        // The hold grows: a crowded, well-built fortress becomes a village, then
+        // a town, then a city — each tier widening how many it can hold.
+        let alive_now = self.inhabitants.count_alive();
+        if let Some(tier) = self.fortress.try_promote(alive_now) {
+            self.apply_reputation_delta(3);
+            lines.push(format!(
+                "The hold has grown into a {}! Word spreads; more can settle here.",
+                tier.name()
+            ));
         }
 
         lines

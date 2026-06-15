@@ -17,12 +17,13 @@ pub mod world;
 pub use adventurers::{generate_adventurer, Adventurer, AdventurerClass};
 pub use battle::{fight_battle, BattleReport};
 pub use engine::{
-    choice_availability, describe_effects, eligible_events, resolve, roll, stat_check_odds,
-    ChoiceAvailability,
+    auto_pick, choice_availability, describe_effects, eligible_events, resolve, roll,
+    stat_check_odds, ChoiceAvailability,
 };
 pub use events::{Choice, Effect, Event, EventResult, StatCheck};
 pub use fortress::{
-    level_numeral, BuildOutcome, Building, Fortress, Upgrade, HOUSING_PLOTS, MAX_BUILDING_LEVEL,
+    level_numeral, BuildOutcome, Building, Fortress, SettlementTier, Upgrade, HOUSING_PLOTS,
+    MAX_BUILDING_LEVEL,
 };
 pub use game_state::{
     BuildAvailability, GameState, ADVENTURER_MIN_REPUTATION, MAX_ADVENTURERS, SAVE_VERSION,

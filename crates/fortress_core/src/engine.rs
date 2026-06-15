@@ -201,6 +201,69 @@ pub fn choice_availability(
     ChoiceAvailability::Ok
 }
 
+/// Auto-mode's pick: the highest-scoring *available* choice, lowest index on a
+/// tie. Deterministic (no rng) so an automated run still replays identically.
+/// Returns None only if no choice is affordable/unlocked.
+pub fn auto_pick(event: &Event, gs: &GameState) -> Option<usize> {
+    let mut best: Option<(i64, usize)> = None;
+    for (i, choice) in event.choices.iter().enumerate() {
+        if choice_availability(choice, event, gs) != ChoiceAvailability::Ok {
+            continue;
+        }
+        let score = score_choice(choice, event, gs);
+        if best.is_none_or(|(b, _)| score > b) {
+            best = Some((score, i));
+        }
+    }
+    best.map(|(_, i)| i)
+}
+
+/// A rough desirability score for a choice — gains good, losses and risks bad,
+/// weighted toward what keeps a fortress alive (food, morale, people).
+fn score_choice(choice: &Choice, event: &Event, gs: &GameState) -> i64 {
+    let mut score = 0i64;
+    for e in &choice.effects {
+        score += effect_score(e, gs);
+    }
+    // a gamble is worth its expected swing, roughly
+    if let (Some(check), Some(p)) = (&choice.stat_check, gs.player.as_ref()) {
+        let stat = p.stats.get(check.stat) as i32;
+        let favorable = (7 - (check.difficulty - stat)).clamp(0, 6) as i64; // ~chance in 6
+        let upside: i64 = check.success_effects.iter().map(|e| effect_score(e, gs)).sum();
+        let downside: i64 = check.failure_effects.iter().map(|e| effect_score(e, gs)).sum();
+        score += (upside * favorable + downside * (6 - favorable)) / 6;
+    }
+    // the price of the choice, lightly weighted
+    let cost = effective_cost(choice, event, gs.player.as_ref());
+    score -= (cost.food + cost.valuables + cost.wood + cost.stone + cost.ore) / 2;
+    score
+}
+
+fn effect_score(effect: &Effect, gs: &GameState) -> i64 {
+    match effect {
+        Effect::Resource(d) => d.food + d.valuables + d.wood / 2 + d.stone / 2 + d.ore + 2 * d.residue,
+        Effect::Morale { amount } => 2 * *amount as i64,
+        Effect::Defense { amount } => *amount as i64,
+        Effect::ApplyToRole { health, morale, .. } => (*health + *morale) as i64,
+        Effect::SpawnInhabitant { .. } => {
+            // worth it only if there's room to take them in
+            if (gs.inhabitants.count_alive() as u32) < gs.fortress.max_population { 6 } else { 0 }
+        }
+        Effect::KillInhabitant { .. } | Effect::RemoveInhabitant {} => -12,
+        Effect::AddUpgrade { .. } => 10,
+        Effect::GrantItem { artifact, .. } => {
+            if *artifact { 12 } else { 6 }
+        }
+        // a fight is a risk; lean against it unless the foe is slight
+        Effect::Battle { power, loot_valuables } => loot_valuables - *power as i64,
+        Effect::Region { darkness, site_strength, pressure } => {
+            // pushing the dark back is good; feeding it is bad
+            (-*darkness + *site_strength - *pressure) as i64
+        }
+        Effect::SetFlag { .. } | Effect::ClearFlag { .. } => 0,
+    }
+}
+
 pub fn resolve(event: &Event, choice_index: usize, gs: &mut GameState) -> EventResult {
     let choice = &event.choices[choice_index];
     let mut result = EventResult {

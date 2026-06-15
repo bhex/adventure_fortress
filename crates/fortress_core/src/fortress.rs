@@ -138,6 +138,62 @@ impl Upgrade {
     }
 }
 
+/// How far the hold has grown from a huddle of huts toward a true city. A
+/// scaffold for the fortress→town→city arc: each tier lifts the population cap
+/// and (later passes) will unlock districts and town-scale systems.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SettlementTier {
+    #[default]
+    Hamlet,
+    Village,
+    Town,
+    City,
+}
+
+impl SettlementTier {
+    pub const ALL: [SettlementTier; 4] =
+        [SettlementTier::Hamlet, SettlementTier::Village, SettlementTier::Town, SettlementTier::City];
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            SettlementTier::Hamlet => "Hamlet",
+            SettlementTier::Village => "Village",
+            SettlementTier::Town => "Town",
+            SettlementTier::City => "City",
+        }
+    }
+
+    /// The baseline population a settlement of this tier supports.
+    pub fn base_population(&self) -> u32 {
+        match self {
+            SettlementTier::Hamlet => 20,
+            SettlementTier::Village => 35,
+            SettlementTier::Town => 60,
+            SettlementTier::City => 100,
+        }
+    }
+
+    /// How many standing buildings a hold needs before it can grow to this tier.
+    fn buildings_required(&self) -> usize {
+        match self {
+            SettlementTier::Hamlet => 0,
+            SettlementTier::Village => 3,
+            SettlementTier::Town => 6,
+            SettlementTier::City => 10,
+        }
+    }
+
+    pub fn next(&self) -> Option<SettlementTier> {
+        match self {
+            SettlementTier::Hamlet => Some(SettlementTier::Village),
+            SettlementTier::Village => Some(SettlementTier::Town),
+            SettlementTier::Town => Some(SettlementTier::City),
+            SettlementTier::City => None,
+        }
+    }
+}
+
 /// "I", "II", "III" — the steward chisels tiers above the door.
 pub fn level_numeral(level: u8) -> &'static str {
     match level {
@@ -173,6 +229,9 @@ pub struct Fortress {
     /// What the forge concentrates on when ore is worked into items.
     #[serde(default = "default_craft_focus")]
     pub craft_focus: ItemKind,
+    /// How far the hold has grown — hamlet → village → town → city.
+    #[serde(default)]
+    pub settlement_tier: SettlementTier,
 }
 
 fn default_craft_focus() -> ItemKind {
@@ -189,6 +248,24 @@ impl Fortress {
             max_population: 20,
             buildings: Vec::new(),
             craft_focus: default_craft_focus(),
+            settlement_tier: SettlementTier::Hamlet,
+        }
+    }
+
+    /// Grow to the next settlement tier when the hold is crowded *and* built up
+    /// enough to sustain it — raising the population cap by the tier's step.
+    /// Returns the new tier if it grew. (Town groundwork; gameplay grows later.)
+    pub fn try_promote(&mut self, alive: usize) -> Option<SettlementTier> {
+        let next = self.settlement_tier.next()?;
+        let crowded = (alive as u32) * 5 >= self.max_population * 4; // ≥80% full
+        let built_up = self.buildings.len() >= next.buildings_required();
+        if crowded && built_up {
+            let step = next.base_population() - self.settlement_tier.base_population();
+            self.max_population += step;
+            self.settlement_tier = next;
+            Some(next)
+        } else {
+            None
         }
     }
 

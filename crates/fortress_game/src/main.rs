@@ -15,7 +15,7 @@ mod ui;
 use bevy::prelude::*;
 use bevy_ascii_terminal::*;
 
-use crate::bridge::{EngineCtl, EventDeck, GameLog, Selected};
+use crate::bridge::{AutoMode, EngineCtl, EventDeck, GameLog, Selected};
 
 #[derive(States, Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum AppState {
@@ -57,6 +57,7 @@ fn main() {
         .insert_resource(EventDeck(deck))
         .init_resource::<EngineCtl>()
         .init_resource::<GameLog>()
+        .init_resource::<AutoMode>()
         .init_resource::<Selected>()
         .init_state::<AppState>()
         .add_systems(PreStartup, override_default_font)

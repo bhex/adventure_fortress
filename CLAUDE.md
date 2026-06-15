@@ -29,7 +29,7 @@ Two crates in a Cargo workspace:
 ```
 crates/fortress_core/         # pure, deterministic, fully tested
   game_state.rs   # owns rng, daily tick, save/load, win/loss, SAVE_VERSION
-  fortress.rs     # day, morale, defense, buildings (Building{kind,level}), build costs
+  fortress.rs     # day, morale, defense, buildings (Building{kind,level}), build costs, SettlementTier (hamlet→city) + try_promote
   resources.rs    # food/valuables/wood/stone/gear/tools/ore/residue; numbers + adjective bands
   items.rs        # ItemStock: typed Item{kind,quality,enchant,condition,artifact}; auto-equip ratings
   inhabitants.rs  # Inhabitant list: Role + Trait enums, damage/heal/morale
@@ -39,7 +39,7 @@ crates/fortress_core/         # pure, deterministic, fully tested
   world.rs        # the turning year: Season + Weather, derived from (run_seed, day); farm/heating/morale/combat modifiers
   adventurers.rs  # heroes who arrive on renown/darkness
   battle.rs       # fight_battle -> multi-round, per-combatant, narrated BattleReport
-  engine.rs       # roll() (quiet-day gate + eligibility), resolve(), apply_effect, mitigate_damage
+  engine.rs       # roll() (quiet-day gate + eligibility), resolve(), apply_effect, mitigate_damage, auto_pick() (heuristic event picker)
   events.rs       # Event/Choice/Effect/StatCheck dataclasses + serde
   content.rs      # JSON loader (globs content/events/*.json)
   examples/sim.rs # headless bot for verification
@@ -57,7 +57,9 @@ Game loop: clock runs in real time → at dawn `engine::roll()` picks today's ev
 - **Combat** (`battle.rs`): resolves over up to `MAX_ROUNDS` rounds with swinging `momentum`; per-combatant actions (commander/heroes strike, casters bolt with Sorcery or blunt the foe with Warding, guards hold the line); a `BREACH_AT` momentum gates the gate-breach that throws non-combatant reserves to the wall. Weapons/armor/morale all feed prowess.
 - **Morale passive**: high morale (≥75) adds a combat edge and (≥80) a day's extra practice + faster job drift; `Effect::Morale` overflow above the 100 cap converts to permanent renown so it isn't wasted.
 - **Seasons & weather** (`world.rs`): `GameState.world` is recomputed each tick from `(run_seed, day)` — **never** via `gs.rng`, so it perturbs no other draw. Season (12-day quarters) and weather modulate farm yield, heating burn, morale, and combat (`side_strength`). Seasonal content events gate on `Event.requires_season`. **World end-state**: when `region.all_fallen()`, `diplomacy`/`trade` events are suppressed (no outside world) until survivors regroup into `SiteKind::Survivors` camps that can grow back.
-- **Daily tick**: building yields, food upkeep, starvation/sleep/morale cascades, skill training, craft/enchant/maintain, region tick, refugee/hero arrivals.
+- **Auto-mode** (`engine::auto_pick`): a Progress-Quest-style toggle (`AutoMode` resource in the game; `A` key or the HUD `auto` button). `auto_pick` scores each available choice (`score_choice`/`effect_score`) and returns the best; `clock.rs` resolves it without a modal. The `sim` example and a content test drive whole runs through it.
+- **Settlement growth** (`fortress.rs`): `SettlementTier` (Hamlet→Village→Town→City) scaffolds fortress→town→city. Each daily tick `try_promote(alive)` checks crowding (≥80% of `max_population`) plus a buildings-built threshold, then bumps the cap and tier. `map.rs` has a `Zone` stub (Keep/Commons/CraftQuarter/Fields/Walls) for a future district pass. No full town yet — just the data seams.
+- **Daily tick**: building yields, food upkeep, starvation/sleep/morale cascades, skill training, craft/enchant/maintain, region tick, refugee/hero arrivals, settlement promotion.
 
 ## Conventions
 

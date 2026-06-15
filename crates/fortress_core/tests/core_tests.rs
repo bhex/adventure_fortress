@@ -1555,6 +1555,67 @@ fn a_fallen_world_stills_the_envoys_then_rebuilds() {
     assert_eq!(gs.region.sites[0].kind, SiteKind::Survivors);
 }
 
+// ----------------------------------------------------------------------
+// auto-mode & town groundwork (Stage 7)
+// ----------------------------------------------------------------------
+
+#[test]
+fn auto_pick_prefers_the_better_choice() {
+    let gs = test_state();
+    let bad = simple_choice(vec![Effect::Morale { amount: -10 }]);
+    let good = simple_choice(vec![Effect::Morale { amount: 10 }]);
+    let event = make_event(vec![bad, good], vec![]); // the good one is second
+    assert_eq!(auto_pick(&event, &gs), Some(1), "auto-mode should take the gain, not the loss");
+}
+
+#[test]
+fn auto_pick_skips_unaffordable_choices() {
+    let gs = test_state(); // 50 food, 50 valuables
+    let mut lavish = simple_choice(vec![Effect::Morale { amount: 100 }]);
+    lavish.cost = ResourceDelta { valuables: 9999, ..Default::default() }; // unaffordable
+    let modest = simple_choice(vec![Effect::Morale { amount: 1 }]);
+    let event = make_event(vec![lavish, modest], vec![]);
+    assert_eq!(auto_pick(&event, &gs), Some(1), "it can't pick what it can't pay for");
+}
+
+#[test]
+fn auto_pick_none_when_all_locked() {
+    let gs = test_state();
+    let mut a = simple_choice(vec![]);
+    a.cost = ResourceDelta { valuables: 9999, ..Default::default() };
+    let mut b = simple_choice(vec![]);
+    b.cost = ResourceDelta { food: 9999, ..Default::default() };
+    let event = make_event(vec![a, b], vec![]);
+    assert_eq!(auto_pick(&event, &gs), None);
+}
+
+#[test]
+fn a_crowded_built_up_hold_grows_into_a_village() {
+    let mut gs = test_state();
+    for u in [Upgrade::Farm, Upgrade::Workshop, Upgrade::Tavern] {
+        gs.fortress.add_building(u); // three standing buildings
+    }
+    gs.fortress.max_population = 20;
+    for n in 0..16 {
+        gs.inhabitants.add(guard(&format!("G{n}"))); // 16/20 = 80% full
+    }
+    let grown = gs.fortress.try_promote(gs.inhabitants.count_alive());
+    assert_eq!(grown, Some(SettlementTier::Village));
+    assert_eq!(gs.fortress.settlement_tier, SettlementTier::Village);
+    assert_eq!(gs.fortress.max_population, 35); // 20 + (35 - 20) step
+}
+
+#[test]
+fn a_sparse_hold_stays_a_hamlet() {
+    let mut gs = test_state();
+    for u in [Upgrade::Farm, Upgrade::Workshop, Upgrade::Tavern] {
+        gs.fortress.add_building(u);
+    }
+    gs.inhabitants.add(guard("A")); // nowhere near crowded
+    assert_eq!(gs.fortress.try_promote(gs.inhabitants.count_alive()), None);
+    assert_eq!(gs.fortress.settlement_tier, SettlementTier::Hamlet);
+}
+
 #[test]
 fn grant_item_effect_places_an_artifact() {
     let mut gs = test_state();

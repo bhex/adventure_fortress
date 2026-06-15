@@ -168,6 +168,31 @@ fn step_day(deck: &[Event], gs: &mut GameState, last: &mut Option<String>) {
     gs.fortress.advance_day();
 }
 
+#[test]
+fn auto_mode_plays_a_full_deterministic_run() {
+    // The auto-picker drives a whole run with no panic, identically per seed.
+    let auto_run = |seed: u64| {
+        let deck = deck();
+        let player = PlayerCharacter::new("Auto", ClassKind::Warlord, Stats { might: 7, wit: 4, heart: 3 });
+        let mut gs = GameState::new_game(seed, "Hold", player);
+        let mut last: Option<String> = None;
+        while !gs.is_game_over() && gs.fortress.day <= 60 {
+            let day = gs.fortress.day;
+            if let Some(event) = roll(&deck, day, &mut gs, last.as_deref()).cloned() {
+                last = Some(event.name.clone());
+                if let Some(idx) = auto_pick(&event, &gs) {
+                    resolve(&event, idx, &mut gs);
+                }
+            }
+            gs.apply_daily_effects();
+            gs.fortress.advance_day();
+        }
+        serde_json::to_string(&gs).unwrap()
+    };
+    assert_eq!(auto_run(7), auto_run(7), "auto-mode must replay identically");
+    assert_ne!(auto_run(7), auto_run(8));
+}
+
 fn run_bot(seed: u64) -> String {
     let deck = deck();
     let player = PlayerCharacter::new("Bot", ClassKind::Warlord, Stats { might: 8, wit: 3, heart: 3 });

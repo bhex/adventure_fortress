@@ -34,6 +34,33 @@ pub enum TileKind {
     Building(Upgrade),
 }
 
+/// Town groundwork: a district concept the map can grow into as the settlement
+/// climbs from hamlet to city (see `SettlementTier`). Not yet wired to layout or
+/// rendering — a seam so a later pass can carve the fortress into zones (a craft
+/// quarter, a market, walls) without reworking the map module from scratch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
+pub enum Zone {
+    Keep,
+    Commons,
+    CraftQuarter,
+    Fields,
+    Walls,
+}
+
+impl Zone {
+    #[allow(dead_code)]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Zone::Keep => "the keep",
+            Zone::Commons => "the commons",
+            Zone::CraftQuarter => "the craft quarter",
+            Zone::Fields => "the fields",
+            Zone::Walls => "the walls",
+        }
+    }
+}
+
 #[derive(Resource, Default)]
 pub struct MapLayout {
     pub tiles: HashMap<IVec2, TileKind>,

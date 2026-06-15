@@ -26,6 +26,11 @@ pub struct EngineCtl {
     pub pending_event: Option<Event>,
 }
 
+/// Progress-Quest-style auto-play: when on, the clock keeps running and events
+/// resolve themselves by `auto_pick` — no modal, no pausing for a decision.
+#[derive(Resource, Default)]
+pub struct AutoMode(pub bool);
+
 #[derive(Resource, Default)]
 pub struct GameLog(pub VecDeque<String>);
 
