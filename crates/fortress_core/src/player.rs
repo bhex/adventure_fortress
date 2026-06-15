@@ -175,6 +175,9 @@ pub struct PlayerCharacter {
     pub morale: i32,
     #[serde(default)]
     pub skills: SkillSet,
+    /// The arms the commander bears — set by the daily auto-equip pass.
+    #[serde(default)]
+    pub loadout: crate::items::Loadout,
 }
 
 fn default_player_health() -> i32 {
@@ -198,6 +201,7 @@ impl PlayerCharacter {
             health: default_player_health(),
             morale: default_player_morale(),
             skills,
+            loadout: crate::items::Loadout::default(),
         }
     }
 

@@ -147,6 +147,9 @@ pub struct Inhabitant {
     pub is_alive: bool,
     #[serde(default)]
     pub skills: SkillSet,
+    /// What this soul carries — set by the daily auto-equip pass.
+    #[serde(default)]
+    pub loadout: crate::items::Loadout,
 }
 
 impl Inhabitant {
@@ -159,6 +162,7 @@ impl Inhabitant {
             traits: Vec::new(),
             is_alive: true,
             skills: SkillSet::default(),
+            loadout: crate::items::Loadout::default(),
         }
     }
 
@@ -226,6 +230,7 @@ pub fn generate_inhabitant(role: Role, rng: &mut GameRng) -> Inhabitant {
         traits,
         is_alive: true,
         skills,
+        loadout: crate::items::Loadout::default(),
     }
 }
 

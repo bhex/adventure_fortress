@@ -355,6 +355,27 @@ fn upgrade_blurb(u: Upgrade) -> &'static str {
     }
 }
 
+/// What a soul is carrying, one line — empty slots are simply omitted. Returns
+/// "(unarmed)" when nothing is held, so the panel always says something.
+fn loadout_line(loadout: &fortress_core::Loadout) -> String {
+    use fortress_core::ItemKind;
+    let mut parts = Vec::new();
+    if let Some(w) = loadout.get(ItemKind::Weapon) {
+        parts.push(format!("wields {}", w.label()));
+    }
+    if let Some(a) = loadout.get(ItemKind::Armor) {
+        parts.push(format!("wears {}", a.label()));
+    }
+    if let Some(t) = loadout.get(ItemKind::Tool) {
+        parts.push(format!("carries {}", t.label()));
+    }
+    if parts.is_empty() {
+        "(unequipped)".to_string()
+    } else {
+        parts.join("\n")
+    }
+}
+
 /// One bar per skill (tier 0..=7), for the inspect panel.
 fn skill_bars(skills: &fortress_core::SkillSet) -> String {
     fortress_core::Skill::ALL
@@ -400,7 +421,7 @@ fn armory_summary(gs: &fortress_core::GameState) -> String {
     }
     let mut lines: Vec<String> = ItemKind::ALL
         .iter()
-        .map(|k| format!("  {}s: {}", k.name(), gs.items.count_kind(*k)))
+        .map(|k| format!("  spare {}s: {}", k.name(), gs.items.count_kind(*k)))
         .collect();
     lines.push(format!("  forge focus: {}", gs.fortress.craft_focus.name()));
     let artifacts: Vec<String> =
@@ -490,7 +511,7 @@ fn update_inspect(
         Some(Selection::Building(u)) => building_inspect(&game, *u),
         Some(Selection::Commander) => match &game.0.player {
             Some(p) => format!(
-                "{} the {}\nCommander of the hold\nHealth {}  Morale {}\nMight {}  Wit {}  Heart {}\n\n{}",
+                "{} the {}\nCommander of the hold\nHealth {}  Morale {}\nMight {}  Wit {}  Heart {}\n\n{}\n\n{}",
                 p.name,
                 p.class.name(),
                 p.health,
@@ -498,6 +519,7 @@ fn update_inspect(
                 p.stats.might,
                 p.stats.wit,
                 p.stats.heart,
+                loadout_line(&p.loadout),
                 skill_bars(&p.skills),
             ),
             None => String::new(),
@@ -505,12 +527,13 @@ fn update_inspect(
         Some(Selection::Hero(name)) => {
             match game.0.adventurers.iter().find(|a| &a.name == name) {
                 Some(a) => format!(
-                    "{} the {}\nWandering hero\nPerk: {} ({} {})\n\n{}",
+                    "{} the {}\nWandering hero\nPerk: {} ({} {})\n{}\n\n{}",
                     a.name,
                     a.class.name(),
                     a.class.perk_name(),
                     a.perk_tier().name(),
                     a.class.home_skill().practitioner(),
+                    loadout_line(&a.loadout),
                     skill_bars(&a.skills),
                 ),
                 None => String::new(),
@@ -532,12 +555,13 @@ fn update_inspect(
                         Role::Peasant => "Willing hands, waiting for a trade.",
                     };
                     format!(
-                        "{}\n{}\nHealth {}  Morale {}\nTraits: {}\n\n{}\n\n{}\n\nAssign: [1]guard [2]farmer [3]smith\n[4]healer [5]miner [6]peasant",
+                        "{}\n{}\nHealth {}  Morale {}\nTraits: {}\n{}\n\n{}\n\n{}\n\nAssign: [1]guard [2]farmer [3]smith\n[4]healer [5]miner [6]peasant",
                         i.name,
                         i.role.name(),
                         i.health,
                         i.morale,
                         traits,
+                        loadout_line(&i.loadout),
                         skill_bars(&i.skills),
                         flavor
                     )

@@ -619,8 +619,9 @@ pub(crate) fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32
         {
             h = -((-h * 3) / 4);
         }
-        // Proper armor in the racks: a fine harness (or better) turns a blow.
-        if gs.items.best_rating(crate::items::ItemKind::Armor) >= 3 {
+        // Proper armor worn on the wall: a defender in a fine harness (or
+        // better) turns a blow — it must be equipped, not just in the racks.
+        if gs.best_combat_armor() >= 3 {
             h = -((-h * 3) / 4);
         }
         // A Warlord commander steadies the line; mitigation scales with their

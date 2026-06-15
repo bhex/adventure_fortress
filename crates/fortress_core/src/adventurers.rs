@@ -60,6 +60,10 @@ pub struct Adventurer {
     pub name: String,
     pub class: AdventurerClass,
     pub skills: SkillSet,
+    /// Arms the hero bears — only the sworn knights take fortress steel; other
+    /// heroes carry their own and leave the loadout empty.
+    #[serde(default)]
+    pub loadout: crate::items::Loadout,
 }
 
 impl Adventurer {
@@ -90,5 +94,5 @@ pub fn generate_adventurer(rng: &mut GameRng) -> Adventurer {
     let name = ADVENTURER_NAMES.choose(rng).unwrap().to_string();
     let mut skills = SkillSet::default();
     skills.train(class.home_skill(), rng.random_range(50..=120));
-    Adventurer { name, class, skills }
+    Adventurer { name, class, skills, loadout: crate::items::Loadout::default() }
 }

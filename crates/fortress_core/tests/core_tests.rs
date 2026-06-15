@@ -1225,6 +1225,7 @@ fn knight_perk_scales_with_combat_tier() {
         name: "Ser Test".to_string(),
         class: AdventurerClass::Knight,
         skills: SkillSet::default(),
+        loadout: Default::default(),
     };
     // a dabbling knight doesn't help yet
     gs.adventurers.push(knight.clone());
@@ -1253,6 +1254,7 @@ fn hero_perks_work_daily_and_train_by_use() {
         name: "Kestrel".to_string(),
         class: AdventurerClass::Ranger,
         skills: SkillSet::default(),
+        loadout: Default::default(),
     };
     ranger.skills.train(Skill::Combat, 90); // Skilled: index 3
     gs.adventurers.push(ranger);
@@ -1329,12 +1331,14 @@ fn fine_armor_turns_a_blow() {
     let mut gs = test_state();
     gs.inhabitants.add(guard("G"));
     gs.items.add(Item::new(ItemKind::Armor, Quality::Fine)); // rating 3
+    gs.redistribute_equipment(); // the guard takes up the harness
+    assert!(gs.best_combat_armor() >= 3, "the guard now wears it");
     resolve_single(
         &mut gs,
         Effect::ApplyToRole { role: Role::Guard, health: -20, morale: 0 },
         vec!["combat"],
     );
-    // one 25% step from the armor alone: -20 -> -15
+    // one 25% step from the worn armor alone: -20 -> -15
     assert_eq!(gs.inhabitants.get_by_role(Role::Guard)[0].health, 85);
 }
 
@@ -1371,6 +1375,33 @@ fn fine_tools_lift_the_harvest() {
 }
 
 #[test]
+fn the_best_blade_reaches_the_ablest_fighter() {
+    let mut gs = test_state();
+    gs.player =
+        Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats { might: 8, wit: 3, heart: 3 }));
+    gs.inhabitants.add(guard("Rook"));
+    gs.items.add(Item::new(ItemKind::Weapon, Quality::Masterwork)); // rating 4
+    gs.items.add(Item::new(ItemKind::Weapon, Quality::Crude)); // rating 1
+    gs.redistribute_equipment();
+    // the commander (might 8 + combat) is the ablest hand → the masterwork
+    assert_eq!(gs.player.as_ref().unwrap().loadout.rating(ItemKind::Weapon), 4);
+    // the rookie guard takes what's left; nothing lingers in the armory
+    assert_eq!(gs.inhabitants.get_by_role(Role::Guard)[0].loadout.rating(ItemKind::Weapon), 1);
+    assert_eq!(gs.items.count_kind(ItemKind::Weapon), 0);
+}
+
+#[test]
+fn a_tool_goes_to_a_worker_not_a_fighter() {
+    let mut gs = test_state();
+    gs.inhabitants.add(Inhabitant::new("F", Role::Farmer));
+    gs.inhabitants.add(guard("G"));
+    gs.items.add(Item::new(ItemKind::Tool, Quality::Fine));
+    gs.redistribute_equipment();
+    assert!(gs.inhabitants.get_by_role(Role::Farmer)[0].loadout.tool.is_some());
+    assert!(gs.inhabitants.get_by_role(Role::Guard)[0].loadout.tool.is_none());
+}
+
+#[test]
 fn wizard_tower_enchants_with_residue() {
     let mut gs = test_state();
     gs.fortress.add_building(Upgrade::WizardTower);
@@ -1393,28 +1424,37 @@ fn enchanting_needs_a_mage() {
     gs.resources.residue = 5;
     gs.apply_daily_effects();
     assert_eq!(gs.resources.residue, 5, "no mage, no enchant, no spent residue");
-    assert!(gs.items.items[0].enchant.is_none());
+    // the guard takes up the blade during the auto-equip pass; it stays plain
+    let blade = gs.inhabitants.get_by_role(Role::Guard)[0].loadout.weapon.as_ref();
+    assert!(blade.is_some_and(|w| w.enchant.is_none()));
 }
 
 #[test]
 fn worn_gear_breaks_but_the_smith_keeps_it_up() {
-    // with no smith, a near-spent item wears out and is scrapped
+    // with no smith, a near-spent blade carried into use wears out and is scrapped
     let mut gs = test_state();
+    gs.inhabitants.add(guard("G")); // a hand to carry it
     let mut worn = Item::new(ItemKind::Weapon, Quality::Plain);
     worn.condition = 2;
     gs.items.add(worn);
     gs.apply_daily_effects();
-    assert_eq!(gs.items.count(), 0, "the worn blade should break and be removed");
+    assert_eq!(gs.items.count(), 0, "the armory is empty");
+    assert!(
+        gs.inhabitants.get_by_role(Role::Guard)[0].loadout.weapon.is_none(),
+        "the worn blade broke in the guard's hand and was scrapped"
+    );
 
     // a smithy with a smith repairs faster than the gear wears
     let mut gs2 = test_state();
     gs2.fortress.add_building(Upgrade::Blacksmith);
+    gs2.inhabitants.add(guard("G"));
     gs2.inhabitants.add(smith("Smith", 60));
     let mut item = Item::new(ItemKind::Weapon, Quality::Plain);
     item.condition = 50;
     gs2.items.add(item);
     gs2.apply_daily_effects();
-    assert!(gs2.items.items[0].condition > 50, "the smith keeps the armory in trim");
+    let blade = gs2.inhabitants.get_by_role(Role::Guard)[0].loadout.weapon.as_ref();
+    assert!(blade.is_some_and(|w| w.condition > 50), "the smith keeps the gear in trim");
 }
 
 #[test]

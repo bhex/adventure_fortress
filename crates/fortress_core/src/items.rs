@@ -202,6 +202,80 @@ impl Item {
     }
 }
 
+/// What one soul carries: at most a weapon, a suit of armor, and a tool. Filled
+/// each day by the fortress's auto-equip pass (`GameState::redistribute_equipment`)
+/// — the ablest fighters take the best arms, the workers the best tools — and the
+/// items here wear with their bearer's use.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct Loadout {
+    #[serde(default)]
+    pub weapon: Option<Item>,
+    #[serde(default)]
+    pub armor: Option<Item>,
+    #[serde(default)]
+    pub tool: Option<Item>,
+}
+
+impl Loadout {
+    fn slot_mut(&mut self, kind: ItemKind) -> &mut Option<Item> {
+        match kind {
+            ItemKind::Weapon => &mut self.weapon,
+            ItemKind::Armor => &mut self.armor,
+            ItemKind::Tool => &mut self.tool,
+        }
+    }
+
+    pub fn get(&self, kind: ItemKind) -> Option<&Item> {
+        match kind {
+            ItemKind::Weapon => self.weapon.as_ref(),
+            ItemKind::Armor => self.armor.as_ref(),
+            ItemKind::Tool => self.tool.as_ref(),
+        }
+    }
+
+    /// The rating of the item in the given slot, or 0 if empty.
+    pub fn rating(&self, kind: ItemKind) -> i32 {
+        self.get(kind).map(|i| i.rating()).unwrap_or(0)
+    }
+
+    /// Take up an item, displacing whatever shared its slot (the caller pools
+    /// the return for the rest of the redistribution).
+    pub fn equip(&mut self, item: Item) -> Option<Item> {
+        self.slot_mut(item.kind).replace(item)
+    }
+
+    /// Empty every slot into a `Vec` — the start of the daily redistribution.
+    pub fn drain(&mut self) -> Vec<Item> {
+        [self.weapon.take(), self.armor.take(), self.tool.take()].into_iter().flatten().collect()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Item> {
+        [self.weapon.as_ref(), self.armor.as_ref(), self.tool.as_ref()].into_iter().flatten()
+    }
+
+    /// A day's wear on the items in hand. Returns the labels of any that broke
+    /// (their slots are cleared so the bearer re-equips next pass).
+    pub fn degrade_in_use(&mut self, amount: i32) -> Vec<String> {
+        let mut broken = Vec::new();
+        for slot in [&mut self.weapon, &mut self.armor, &mut self.tool] {
+            if let Some(item) = slot.as_mut() {
+                item.degrade(amount);
+                if item.is_broken() {
+                    broken.push(item.label());
+                    *slot = None;
+                }
+            }
+        }
+        broken
+    }
+
+    pub fn repair_all(&mut self, points: i32) {
+        for item in [&mut self.weapon, &mut self.armor, &mut self.tool].into_iter().flatten() {
+            item.repair(points);
+        }
+    }
+}
+
 /// The fortress armory: every item not yet broken or lost. Order is insertion
 /// order; rankings are computed on demand so saves stay deterministic.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]

@@ -64,6 +64,9 @@ pub fn fight_battle(
 ) -> BattleReport {
     let mut lines = Vec::new();
 
+    // Everyone grabs their best arms before the foe arrives.
+    gs.redistribute_equipment();
+
     // ---- muster the defenders ----
     let mut frontline: Vec<Combatant> = Vec::new();
     let mut reserves: Vec<Combatant> = Vec::new();
@@ -74,7 +77,9 @@ pub fn fight_battle(
         commander_fights.then(|| gs.player.as_ref().unwrap().name.clone());
     if let Some(p) = &gs.player {
         if p.is_alive() {
-            let martial = p.stats.might as i32 + p.skills.tier(Skill::Combat).index() as i32;
+            // the commander's own blade lends its weight to their martial push
+            let weapon = p.loadout.rating(ItemKind::Weapon);
+            let martial = p.stats.might as i32 + p.skills.tier(Skill::Combat).index() as i32 + weapon;
             let offense = magic_offense(&p.skills);
             let ward = p.skills.tier(Skill::Warding).index() as i32;
             // A caster commander leads with the stronger of blade or bolt.
@@ -93,7 +98,9 @@ pub fn fight_battle(
     for i in gs.inhabitants.get_alive() {
         match i.role {
             Role::Guard => {
-                let push = i.skills.tier(Skill::Combat).index() as i32 + 1;
+                let push = i.skills.tier(Skill::Combat).index() as i32
+                    + 1
+                    + i.loadout.rating(ItemKind::Weapon);
                 frontline.push(Combatant {
                     name: i.name.clone(),
                     push,
@@ -130,7 +137,7 @@ pub fn fight_battle(
     for a in gs.adventurers.iter().filter(|a| a.class == AdventurerClass::Knight) {
         frontline.push(Combatant {
             name: a.name.clone(),
-            push: a.perk_tier().index() as i32,
+            push: a.perk_tier().index() as i32 + a.loadout.rating(ItemKind::Weapon),
             mortal: false,
             kind: ActorKind::Knight,
         });
@@ -244,11 +251,11 @@ fn magic_offense(skills: &crate::skills::SkillSet) -> i32 {
     sorcery.max(dark) * 2
 }
 
-/// Our whole strength this round: every active fighter's push, plus the weapons
-/// the best hands carry, the bulk armory, the walls, and the day's heart.
+/// Our whole strength this round: every active fighter's push (their own arms
+/// already folded in at muster), plus the bulk armory, the walls, and the day's
+/// heart.
 fn side_strength(active: &[Combatant], gs: &GameState, morale_edge: i32) -> i32 {
     let combat: i32 = active.iter().map(|c| c.push).sum();
-    let weapons = gs.items.equip_rating(ItemKind::Weapon, active.len());
     let gear = match gs.resources.band(ResourceKind::Gear) {
         StockBand::Exhausted => 0,
         StockBand::Scarce | StockBand::Lean => 1,
@@ -256,8 +263,7 @@ fn side_strength(active: &[Combatant], gs: &GameState, morale_edge: i32) -> i32 
         StockBand::Comfortable => 3,
         StockBand::Plentiful => 4,
     };
-    combat + weapons + gear + gs.fortress.defense / 10 + morale_edge
-        + gs.world.weather.combat_edge()
+    combat + gear + gs.fortress.defense / 10 + morale_edge + gs.world.weather.combat_edge()
 }
 
 /// Pick the round's standout and tell what they did, coloured by the tide.

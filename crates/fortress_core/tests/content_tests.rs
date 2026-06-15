@@ -206,6 +206,20 @@ fn run_bot(seed: u64) -> String {
 }
 
 #[test]
+fn equipped_loadouts_survive_a_round_trip() {
+    let mut gs = GameState::new(5);
+    gs.player = Some(PlayerCharacter::new("Cmd", ClassKind::Warlord, Stats::default()));
+    gs.inhabitants.add(Inhabitant::new("G", Role::Guard));
+    gs.items.add(Item::new(ItemKind::Weapon, Quality::Fine));
+    gs.items.add(Item::new(ItemKind::Armor, Quality::Plain));
+    gs.redistribute_equipment();
+    assert!(gs.player.as_ref().unwrap().loadout.weapon.is_some(), "the commander is armed");
+    let json = serde_json::to_string(&gs).unwrap();
+    let restored: GameState = serde_json::from_str(&json).unwrap();
+    assert_eq!(serde_json::to_string(&restored).unwrap(), json);
+}
+
+#[test]
 fn serde_round_trip_byte_equal() {
     let player = PlayerCharacter::new("Hero", ClassKind::Steward, Stats::default());
     let gs = GameState::new_game(99, "Hold", player);

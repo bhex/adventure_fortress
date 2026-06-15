@@ -16,7 +16,7 @@ use crate::rng::GameRng;
 use crate::skills::Skill;
 use crate::world::World;
 
-pub const SAVE_VERSION: u32 = 11;
+pub const SAVE_VERSION: u32 = 12;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 
@@ -28,6 +28,15 @@ pub enum SaveError {
     Json(#[from] serde_json::Error),
     #[error("unsupported save version {0} (expected {SAVE_VERSION})")]
     Version(u32),
+}
+
+/// A handle to whoever can carry equipment, used by the auto-equip pass to
+/// place an item back into the right collection.
+#[derive(Clone, Copy)]
+enum Bearer {
+    Commander,
+    Inhabitant(usize),
+    Hero(usize),
 }
 
 /// Why a building can or can't go up (or tier up) right now.
@@ -524,8 +533,15 @@ impl GameState {
                 } else {
                     0
                 };
-            // Proper tools in hand work the field harder still.
-            if self.items.best_rating(ItemKind::Tool) >= 3 {
+            // Proper tools in the farmers' own hands work the field harder still.
+            let best_farmer_tool = self
+                .inhabitants
+                .get_by_role(Role::Farmer)
+                .iter()
+                .map(|i| i.loadout.rating(ItemKind::Tool))
+                .max()
+                .unwrap_or(0);
+            if best_farmer_tool >= 3 {
                 tool_bonus += 1;
             }
             // Season and weather decide whether the fields are generous or grim.
@@ -716,6 +732,146 @@ impl GameState {
         Some(format!("A lasting work is completed: {}. {}", feature.name(), feature.blurb()))
     }
 
+    /// Auto-equip: pool every item the hold owns (the armory plus whatever each
+    /// soul already carries), then hand the best out by need — weapons and armor
+    /// to the ablest fighters, tools to the most skilled workers. Whatever no one
+    /// needs returns to the armory. Fully deterministic (no rng): ties fall to
+    /// insertion order, so saves replay identically.
+    pub fn redistribute_equipment(&mut self) {
+        use crate::items::{Item, ItemKind};
+
+        // ---- 1. pool everything currently held or stored ----
+        let mut pool: Vec<Item> = std::mem::take(&mut self.items.items);
+        if let Some(p) = self.player.as_mut() {
+            pool.append(&mut p.loadout.drain());
+        }
+        for i in self.inhabitants.inhabitants.iter_mut() {
+            pool.append(&mut i.loadout.drain());
+        }
+        for a in self.adventurers.iter_mut() {
+            pool.append(&mut a.loadout.drain());
+        }
+
+        // ---- 2. sort each kind, best first ----
+        let (mut weapons, mut armor, mut tools) = (Vec::new(), Vec::new(), Vec::new());
+        for item in pool {
+            match item.kind {
+                ItemKind::Weapon => weapons.push(item),
+                ItemKind::Armor => armor.push(item),
+                ItemKind::Tool => tools.push(item),
+            }
+        }
+        for v in [&mut weapons, &mut armor, &mut tools] {
+            v.sort_by_key(|i| std::cmp::Reverse(i.rating()));
+        }
+
+        // ---- 3. rank the bearers: fighters by prowess, workers by their trade ----
+        let mut fighters: Vec<(i32, Bearer)> = Vec::new();
+        let mut workers: Vec<(i32, Bearer)> = Vec::new();
+        if let Some(p) = &self.player {
+            if p.is_alive() {
+                let prowess = p.stats.might as i32 + p.skills.tier(Skill::Combat).index() as i32;
+                fighters.push((prowess, Bearer::Commander));
+            }
+        }
+        for (idx, i) in self.inhabitants.inhabitants.iter().enumerate() {
+            if !i.is_alive {
+                continue;
+            }
+            if i.role == Role::Guard {
+                fighters.push((i.skills.tier(Skill::Combat).index() as i32, Bearer::Inhabitant(idx)));
+            } else {
+                workers.push((
+                    i.skills.tier(i.role.home_skill()).index() as i32,
+                    Bearer::Inhabitant(idx),
+                ));
+            }
+        }
+        // Only the sworn knights take fortress steel into the line; other heroes
+        // carry their own and aren't issued arms (they'd never wield them).
+        for (idx, a) in self.adventurers.iter().enumerate() {
+            if a.class == AdventurerClass::Knight {
+                fighters.push((a.perk_tier().index() as i32, Bearer::Hero(idx)));
+            }
+        }
+        // stable sort keeps insertion order among equals — determinism
+        fighters.sort_by_key(|&(score, _)| std::cmp::Reverse(score));
+        workers.sort_by_key(|&(score, _)| std::cmp::Reverse(score));
+
+        // ---- 4. hand them out, best to best; leftovers back to the armory ----
+        let mut weapons = weapons.into_iter();
+        for &(_, bearer) in &fighters {
+            match weapons.next() {
+                Some(w) => self.equip_bearer(bearer, w),
+                None => break,
+            }
+        }
+        let mut armor = armor.into_iter();
+        for &(_, bearer) in &fighters {
+            match armor.next() {
+                Some(a) => self.equip_bearer(bearer, a),
+                None => break,
+            }
+        }
+        let mut tools = tools.into_iter();
+        for &(_, bearer) in &workers {
+            match tools.next() {
+                Some(t) => self.equip_bearer(bearer, t),
+                None => break,
+            }
+        }
+        self.items.items.extend(weapons);
+        self.items.items.extend(armor);
+        self.items.items.extend(tools);
+    }
+
+    fn equip_bearer(&mut self, bearer: Bearer, item: crate::items::Item) {
+        match bearer {
+            Bearer::Commander => {
+                if let Some(p) = self.player.as_mut() {
+                    p.loadout.equip(item);
+                }
+            }
+            Bearer::Inhabitant(i) => {
+                self.inhabitants.inhabitants[i].loadout.equip(item);
+            }
+            Bearer::Hero(i) => {
+                self.adventurers[i].loadout.equip(item);
+            }
+        }
+    }
+
+    /// The best armor any defender on the wall (commander or guard) actually
+    /// wears — the per-bearer source for combat damage mitigation.
+    pub fn best_combat_armor(&self) -> i32 {
+        let mut best = 0;
+        if let Some(p) = &self.player {
+            if p.is_alive() {
+                best = best.max(p.loadout.rating(ItemKind::Armor));
+            }
+        }
+        for i in self.inhabitants.get_by_role(Role::Guard) {
+            best = best.max(i.loadout.rating(ItemKind::Armor));
+        }
+        best
+    }
+
+    /// The smith keeps everything in trim — both the armory and the gear in hand.
+    fn maintain_equipment(&mut self, points: i32) {
+        for item in self.items.items.iter_mut() {
+            item.repair(points);
+        }
+        if let Some(p) = self.player.as_mut() {
+            p.loadout.repair_all(points);
+        }
+        for i in self.inhabitants.inhabitants.iter_mut() {
+            i.loadout.repair_all(points);
+        }
+        for a in self.adventurers.iter_mut() {
+            a.loadout.repair_all(points);
+        }
+    }
+
     /// The whole item economy for a day: the forge works ore into equipment,
     /// the Wizard Tower binds enchantments, the smith keeps the armory in trim,
     /// and everything in use wears a little. Returns log lines.
@@ -776,14 +932,26 @@ impl GameState {
             }
         }
 
-        // ---- the smith keeps the carried gear from falling apart ----
+        // ---- auto-equip: the best arms reach the ablest hands ----
+        self.redistribute_equipment();
+
+        // ---- the smith keeps everything in trim, armory and gear in hand ----
         if smithy_level > 0 && self.inhabitants.has_role(Role::Blacksmith) {
-            self.items.maintain(smithy_level as usize, 20 + 10 * smithy_level as i32);
+            self.maintain_equipment(20 + 10 * smithy_level as i32);
         }
 
-        // ---- a day's wear: only the items actually in hand wear down ----
-        let slots = (self.inhabitants.count_alive() + usize::from(self.player.is_some())).max(1);
-        for label in self.items.degrade_in_use(slots, 2) {
+        // ---- a day's wear: only the items actually carried wear down ----
+        let mut broken = Vec::new();
+        if let Some(p) = self.player.as_mut() {
+            broken.extend(p.loadout.degrade_in_use(2));
+        }
+        for i in self.inhabitants.inhabitants.iter_mut().filter(|i| i.is_alive) {
+            broken.extend(i.loadout.degrade_in_use(2));
+        }
+        for a in self.adventurers.iter_mut() {
+            broken.extend(a.loadout.degrade_in_use(2));
+        }
+        for label in broken {
             lines.push(format!("A {label} is worn past use and scrapped."));
         }
 
