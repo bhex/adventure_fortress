@@ -29,10 +29,10 @@ Two crates in a Cargo workspace:
 ```
 crates/fortress_core/         # pure, deterministic, fully tested
   game_state.rs   # owns rng, daily tick, save/load, win/loss, SAVE_VERSION
-  fortress.rs     # day, morale, defense, buildings (Building{kind,level}), build costs, SettlementTier (hamlet→city) + try_promote
+  fortress.rs     # day, morale, defense, buildings (Building{kind,level}), build costs + worker-days, BuildProject queue, FortressFeature, SettlementTier (hamlet→city) + try_promote
   resources.rs    # food/valuables/wood/stone/gear/tools/ore/residue; numbers + adjective bands
   items.rs        # ItemStock: typed Item{kind,quality,enchant,condition,artifact}; auto-equip ratings
-  inhabitants.rs  # Inhabitant list: Role + Trait enums, damage/heal/morale
+  inhabitants.rs  # Inhabitant list: Role (incl. Miner) + Trait enums, damage/heal/morale
   player.rs       # PlayerCharacter (the commander) + ClassKind
   skills.rs       # SkillSet: skills × tiers, xp-based growth
   region.rs       # the darkness war: Sites, darkness 0-100, portal pressure, refugees, world end-state (survivor camps)
@@ -59,6 +59,8 @@ Game loop: clock runs in real time → at dawn `engine::roll()` picks today's ev
 - **Seasons & weather** (`world.rs`): `GameState.world` is recomputed each tick from `(run_seed, day)` — **never** via `gs.rng`, so it perturbs no other draw. Season (12-day quarters) and weather modulate farm yield, heating burn, morale, and combat (`side_strength`). Seasonal content events gate on `Event.requires_season`. **World end-state**: when `region.all_fallen()`, `diplomacy`/`trade` events are suppressed (no outside world) until survivors regroup into `SiteKind::Survivors` camps that can grow back.
 - **Auto-mode** (`engine::auto_pick`): a Progress-Quest-style toggle (`AutoMode` resource in the game; `A` key or the HUD `auto` button). `auto_pick` scores each available choice (`score_choice`/`effect_score`) and returns the best; `clock.rs` resolves it without a modal. The `sim` example and a content test drive whole runs through it.
 - **Settlement growth** (`fortress.rs`): `SettlementTier` (Hamlet→Village→Town→City) scaffolds fortress→town→city. Each daily tick `try_promote(alive)` checks crowding (≥80% of `max_population`) plus a buildings-built threshold, then bumps the cap and tier. `map.rs` has a `Zone` stub (Keep/Commons/CraftQuarter/Fields/Walls) for a future district pass. No full town yet — just the data seams.
+- **Construction** (`fortress.rs`): `construct()` pays materials up front and **enqueues** a `BuildProject` (`worker_days_remaining`); the daily tick's `advance_projects(workforce)` draws it down by `build_workforce()` (laborers — peasants/miners — plus a baseline) and calls `build_upgrade` on completion. Event-granted buildings (`Effect::AddUpgrade`) and the founding charter still build instantly via `build_upgrade`. `BuildAvailability::InProgress` gates re-queuing; the build menu shows ETA.
+- **Fortress features** (`fortress.rs`): `FortressFeature` (Ramparts/DeepCellars/GreatHearth/MasterForge) — one rare permanent boon per run, granted by `maybe_grant_feature` on a low daily roll once renown ≥ 50; effects read off `has_feature` where they apply (defense, food cap, heating burn, craft quality).
 - **Daily tick**: building yields, food upkeep, starvation/sleep/morale cascades, skill training, craft/enchant/maintain, region tick, refugee/hero arrivals, settlement promotion.
 
 ## Conventions

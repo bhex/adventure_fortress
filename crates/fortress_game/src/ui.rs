@@ -528,10 +528,11 @@ fn update_inspect(
                         Role::Farmer => "Coaxes life from stubborn soil.",
                         Role::Blacksmith => "The ring of the hammer is constant.",
                         Role::Healer => "Mends what the world breaks.",
+                        Role::Miner => "Hews stone and ore from the deep seam.",
                         Role::Peasant => "Willing hands, waiting for a trade.",
                     };
                     format!(
-                        "{}\n{}\nHealth {}  Morale {}\nTraits: {}\n\n{}\n\n{}\n\nAssign: [1]guard [2]farmer\n[3]smith [4]healer [5]peasant",
+                        "{}\n{}\nHealth {}  Morale {}\nTraits: {}\n\n{}\n\n{}\n\nAssign: [1]guard [2]farmer [3]smith\n[4]healer [5]miner [6]peasant",
                         i.name,
                         i.role.name(),
                         i.health,

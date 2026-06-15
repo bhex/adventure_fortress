@@ -96,6 +96,18 @@ impl Upgrade {
         ResourceDelta { food: scale(food), wood: scale(wood), stone: scale(stone), ..Default::default() }
     }
 
+    /// Worker-days of labor to raise this building at `level`. A project draws
+    /// this down by the hold's available workforce each day until it completes.
+    pub fn build_worker_days(&self, level: u8) -> i32 {
+        let base = match self {
+            Upgrade::Housing | Upgrade::Farm | Upgrade::Graveyard => 3,
+            Upgrade::Watchtower | Upgrade::Lumberyard | Upgrade::Tavern => 4,
+            Upgrade::Barracks | Upgrade::Mine | Upgrade::WizardTower => 6,
+            _ => 5,
+        };
+        base + (level.saturating_sub(1) as i32) * 2
+    }
+
     /// Specialist who must live here before the building can go up.
     pub fn required_role(&self) -> Option<Role> {
         match self {
@@ -194,6 +206,56 @@ impl SettlementTier {
     }
 }
 
+/// A rare, permanent boon a hold earns at most once a run — by surviving a
+/// calamity or making a true name for itself (crossing a renown threshold).
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FortressFeature {
+    /// Sheer stone walls — a standing defense bonus.
+    Ramparts,
+    /// Cold, dry vaults — the larder keeps far more grain.
+    DeepCellars,
+    /// A great central hearth — the hold burns less timber against the cold.
+    GreatHearth,
+    /// A peerless anvil — the forge turns out finer work.
+    MasterForge,
+}
+
+impl FortressFeature {
+    pub const ALL: [FortressFeature; 4] = [
+        FortressFeature::Ramparts,
+        FortressFeature::DeepCellars,
+        FortressFeature::GreatHearth,
+        FortressFeature::MasterForge,
+    ];
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            FortressFeature::Ramparts => "the Ramparts",
+            FortressFeature::DeepCellars => "the Deep Cellars",
+            FortressFeature::GreatHearth => "the Great Hearth",
+            FortressFeature::MasterForge => "the Master Forge",
+        }
+    }
+
+    pub fn blurb(&self) -> &'static str {
+        match self {
+            FortressFeature::Ramparts => "Sheer stone walls stand against any assault.",
+            FortressFeature::DeepCellars => "Cold vaults keep the larder full through any winter.",
+            FortressFeature::GreatHearth => "A great hearth warms the whole hold for little fuel.",
+            FortressFeature::MasterForge => "A peerless anvil; the smith's work is the finer for it.",
+        }
+    }
+}
+
+/// A build or upgrade underway: materials already paid, labor still owed.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BuildProject {
+    pub upgrade: Upgrade,
+    pub target_level: u8,
+    pub worker_days_remaining: i32,
+}
+
 /// "I", "II", "III" — the steward chisels tiers above the door.
 pub fn level_numeral(level: u8) -> &'static str {
     match level {
@@ -232,6 +294,13 @@ pub struct Fortress {
     /// How far the hold has grown — hamlet → village → town → city.
     #[serde(default)]
     pub settlement_tier: SettlementTier,
+    /// Builds underway — materials paid, labor still owed. The front of the
+    /// queue is the one the workforce is on; the rest wait their turn.
+    #[serde(default)]
+    pub projects: Vec<BuildProject>,
+    /// Rare permanent boons; at most one per run (see `FortressFeature`).
+    #[serde(default)]
+    pub features: Vec<FortressFeature>,
 }
 
 fn default_craft_focus() -> ItemKind {
@@ -249,7 +318,42 @@ impl Fortress {
             buildings: Vec::new(),
             craft_focus: default_craft_focus(),
             settlement_tier: SettlementTier::Hamlet,
+            projects: Vec::new(),
+            features: Vec::new(),
         }
+    }
+
+    pub fn has_feature(&self, feature: FortressFeature) -> bool {
+        self.features.contains(&feature)
+    }
+
+    /// A project (build or upgrade) of this kind is already underway.
+    pub fn has_project(&self, kind: Upgrade) -> bool {
+        self.projects.iter().any(|p| p.upgrade == kind)
+    }
+
+    /// Enqueue a build/upgrade — its materials are paid by the caller; what's
+    /// owed now is labor (`worker_days`).
+    pub fn enqueue_project(&mut self, kind: Upgrade, target_level: u8) {
+        self.projects.push(BuildProject {
+            upgrade: kind,
+            target_level,
+            worker_days_remaining: kind.build_worker_days(target_level),
+        });
+    }
+
+    /// Put a day's `workforce` into the front project. Returns the upgrades that
+    /// completed today (usually none or one), to be applied by the caller.
+    pub fn advance_projects(&mut self, workforce: i32) -> Vec<Upgrade> {
+        let mut done = Vec::new();
+        if let Some(project) = self.projects.first_mut() {
+            project.worker_days_remaining -= workforce.max(1);
+            if project.worker_days_remaining <= 0 {
+                done.push(project.upgrade);
+                self.projects.remove(0);
+            }
+        }
+        done
     }
 
     /// Grow to the next settlement tier when the hold is crowded *and* built up

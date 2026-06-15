@@ -63,7 +63,8 @@ fn next_filter(f: Option<fortress_core::Role>) -> Option<fortress_core::Role> {
         Some(Role::Guard) => Some(Role::Farmer),
         Some(Role::Farmer) => Some(Role::Blacksmith),
         Some(Role::Blacksmith) => Some(Role::Healer),
-        Some(Role::Healer) => Some(Role::Peasant),
+        Some(Role::Healer) => Some(Role::Miner),
+        Some(Role::Miner) => Some(Role::Peasant),
         Some(Role::Peasant) => None,
     }
 }
@@ -375,6 +376,8 @@ fn assign_role_keys(
     } else if keys.just_pressed(KeyCode::Digit4) {
         fortress_core::Role::Healer
     } else if keys.just_pressed(KeyCode::Digit5) {
+        fortress_core::Role::Miner
+    } else if keys.just_pressed(KeyCode::Digit6) {
         fortress_core::Role::Peasant
     } else {
         return;

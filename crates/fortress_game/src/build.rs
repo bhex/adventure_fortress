@@ -127,6 +127,17 @@ fn spawn_menu_ui(commands: &mut Commands, gs: &GameState) {
                             BuildAvailability::CantAfford => {
                                 format!("  — {} (can't afford: {})", verb, upgrade.build_cost(next).describe_cost())
                             }
+                            BuildAvailability::InProgress => {
+                                let wf = gs.build_workforce().max(1);
+                                let eta = gs
+                                    .fortress
+                                    .projects
+                                    .iter()
+                                    .find(|p| p.upgrade == upgrade)
+                                    .map(|p| (p.worker_days_remaining + wf - 1) / wf)
+                                    .unwrap_or(0);
+                                format!("  — underway (~{eta} days left)")
+                            }
                         };
 
                         let mut button = panel.spawn((

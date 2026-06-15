@@ -12,15 +12,19 @@ pub enum Role {
     Farmer,
     Blacksmith,
     Healer,
+    /// Works the Mine — better stone and ore than a peasant filling in.
+    Miner,
     /// The unspecialized arrival: general labor, learns a trade over time.
     Peasant,
 }
 
 impl Role {
-    pub const ALL: [Role; 5] =
-        [Role::Guard, Role::Farmer, Role::Blacksmith, Role::Healer, Role::Peasant];
+    pub const ALL: [Role; 6] =
+        [Role::Guard, Role::Farmer, Role::Blacksmith, Role::Healer, Role::Miner, Role::Peasant];
 
     /// Roles a peasant can drift into / be assigned to (the real trades).
+    /// Mining isn't a drift target — it has no distinct skill of its own — so
+    /// miners are made by hand, not by aptitude.
     pub const TRADES: [Role; 4] = [Role::Guard, Role::Farmer, Role::Blacksmith, Role::Healer];
 
     pub fn name(&self) -> &'static str {
@@ -29,6 +33,7 @@ impl Role {
             Role::Farmer => "farmer",
             Role::Blacksmith => "blacksmith",
             Role::Healer => "healer",
+            Role::Miner => "miner",
             Role::Peasant => "peasant",
         }
     }
@@ -40,7 +45,8 @@ impl Role {
             Role::Farmer => Skill::Farming,
             Role::Blacksmith => Skill::Smithing,
             Role::Healer => Skill::Medicine,
-            Role::Peasant => Skill::Crafting,
+            // Miners are laborers underground — they keep their hand in at craft.
+            Role::Miner | Role::Peasant => Skill::Crafting,
         }
     }
 
@@ -117,12 +123,16 @@ const HEALER_NAMES: [&str; 10] = ["Aideen", "Brenna", "Ciara", "Deirdre", "Eilee
 const PEASANT_NAMES: [&str; 10] =
     ["Alby", "Bryn", "Cleg", "Dell", "Emm", "Fenn", "Gil", "Hob", "Ned", "Ott"];
 
+const MINER_NAMES: [&str; 10] =
+    ["Borin", "Delf", "Grum", "Korin", "Maddoc", "Nael", "Orin", "Pike", "Rorek", "Thane"];
+
 fn names_for(role: Role) -> &'static [&'static str] {
     match role {
         Role::Guard => &GUARD_NAMES,
         Role::Farmer => &FARMER_NAMES,
         Role::Blacksmith => &BLACKSMITH_NAMES,
         Role::Healer => &HEALER_NAMES,
+        Role::Miner => &MINER_NAMES,
         Role::Peasant => &PEASANT_NAMES,
     }
 }

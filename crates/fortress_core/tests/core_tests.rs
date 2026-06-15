@@ -12,6 +12,20 @@ fn guard(name: &str) -> Inhabitant {
     Inhabitant::new(name, Role::Guard)
 }
 
+/// Drive every queued build straight to completion (materials already paid by
+/// `construct`), isolating construction from the rest of the daily tick.
+fn finish_projects(gs: &mut GameState) {
+    loop {
+        let done = gs.fortress.advance_projects(1000);
+        if done.is_empty() {
+            break;
+        }
+        for u in done {
+            gs.build_upgrade(u);
+        }
+    }
+}
+
 fn make_event(choices: Vec<Choice>, tags: Vec<&str>) -> Event {
     serde_json::from_value(serde_json::json!({
         "name": "Test Event",
@@ -561,15 +575,21 @@ fn construct_pays_materials_and_builds() {
     let wood_before = gs.resources.wood;
     let stone_before = gs.resources.stone;
     assert_eq!(gs.build_availability(Upgrade::Watchtower), BuildAvailability::Ok);
+    // breaking ground pays the materials up front but only enqueues the labor
     gs.construct(Upgrade::Watchtower).expect("buildable");
-    assert!(gs.fortress.has_upgrade(Upgrade::Watchtower));
-    assert_eq!(gs.fortress.building_level(Upgrade::Watchtower), 1);
     let cost = Upgrade::Watchtower.build_cost(1);
     assert_eq!(gs.resources.wood, wood_before - cost.wood);
     assert_eq!(gs.resources.stone, stone_before - cost.stone);
+    assert!(!gs.fortress.has_upgrade(Upgrade::Watchtower), "not raised until the labor is done");
+    assert_eq!(gs.build_availability(Upgrade::Watchtower), BuildAvailability::InProgress);
+    // the workforce finishes it
+    finish_projects(&mut gs);
+    assert!(gs.fortress.has_upgrade(Upgrade::Watchtower));
+    assert_eq!(gs.fortress.building_level(Upgrade::Watchtower), 1);
     // building it again tiers it up rather than duplicating
     gs.resources.apply_delta(&ResourceDelta { wood: 99, stone: 99, ..Default::default() });
     gs.construct(Upgrade::Watchtower).expect("upgradeable to II");
+    finish_projects(&mut gs);
     assert_eq!(gs.fortress.building_level(Upgrade::Watchtower), 2);
     assert_eq!(gs.fortress.buildings.len(), 1);
 }
@@ -595,6 +615,80 @@ fn construct_blocked_without_materials() {
     assert_eq!(gs.build_availability(Upgrade::Watchtower), BuildAvailability::CantAfford);
     assert!(gs.construct(Upgrade::Watchtower).is_err());
     assert!(!gs.fortress.has_upgrade(Upgrade::Watchtower));
+}
+
+#[test]
+fn a_build_consumes_worker_days_before_finishing() {
+    let mut gs = test_state();
+    gs.resources.apply_delta(&ResourceDelta { wood: 30, stone: 30, ..Default::default() });
+    // a lone hold with no laborers musters a workforce of 1 a day
+    assert_eq!(gs.build_workforce(), 1);
+    gs.construct(Upgrade::Watchtower).expect("buildable"); // 4 worker-days
+    // one day's labor is not enough
+    let done = gs.fortress.advance_projects(gs.build_workforce());
+    assert!(done.is_empty());
+    assert!(!gs.fortress.has_upgrade(Upgrade::Watchtower));
+    // a crew of laborers finishes it far faster
+    for n in ["A", "B", "C", "D"] {
+        gs.inhabitants.add(Inhabitant::new(n, Role::Peasant));
+    }
+    assert_eq!(gs.build_workforce(), 5); // 4 peasants + baseline
+    let done = gs.fortress.advance_projects(gs.build_workforce());
+    assert_eq!(done, vec![Upgrade::Watchtower]);
+    gs.build_upgrade(Upgrade::Watchtower);
+    assert!(gs.fortress.has_upgrade(Upgrade::Watchtower));
+    assert!(gs.fortress.projects.is_empty());
+}
+
+#[test]
+fn a_renowned_hold_earns_one_lasting_feature() {
+    let mut gs = test_state();
+    gs.reputation = 60; // a true name made
+    // drive enough days that the low daily roll lands at least once
+    let mut granted = false;
+    for _ in 0..200 {
+        if gs.maybe_grant_feature().is_some() {
+            granted = true;
+            break;
+        }
+    }
+    assert!(granted, "a renowned hold should eventually earn a feature");
+    assert_eq!(gs.fortress.features.len(), 1);
+    // never a second one, however long it stands
+    for _ in 0..200 {
+        gs.maybe_grant_feature();
+    }
+    assert_eq!(gs.fortress.features.len(), 1, "at most one feature a run");
+}
+
+#[test]
+fn deep_cellars_deepen_the_larder() {
+    use fortress_core::FortressFeature;
+    let mut gs = test_state();
+    gs.inhabitants.add(Inhabitant::new("F", Role::Farmer));
+    gs.resources.food = 200; // well over the base 50 cap
+    gs.apply_daily_effects();
+    let capped_plain = gs.resources.food;
+    // with the Deep Cellars, far more grain survives the spoilage sweep
+    let mut gs2 = test_state();
+    gs2.inhabitants.add(Inhabitant::new("F", Role::Farmer));
+    gs2.fortress.features.push(FortressFeature::DeepCellars);
+    gs2.resources.food = 200;
+    gs2.apply_daily_effects();
+    assert!(gs2.resources.food > capped_plain);
+}
+
+#[test]
+fn a_miner_draws_more_from_the_seam_than_a_peasant() {
+    let base = |role: Role| {
+        let mut gs = test_state();
+        gs.fortress.add_building(Upgrade::Mine); // tier I: 3 stone, 2 ore
+        gs.inhabitants.add(Inhabitant::new("W", role));
+        let before = gs.resources.stone;
+        gs.apply_daily_effects();
+        gs.resources.stone - before
+    };
+    assert!(base(Role::Miner) > base(Role::Peasant), "a miner outdigs a peasant filling in");
 }
 
 #[test]

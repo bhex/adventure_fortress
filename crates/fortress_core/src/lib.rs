@@ -22,8 +22,8 @@ pub use engine::{
 };
 pub use events::{Choice, Effect, Event, EventResult, StatCheck};
 pub use fortress::{
-    level_numeral, BuildOutcome, Building, Fortress, SettlementTier, Upgrade, HOUSING_PLOTS,
-    MAX_BUILDING_LEVEL,
+    level_numeral, BuildOutcome, BuildProject, Building, Fortress, FortressFeature, SettlementTier,
+    Upgrade, HOUSING_PLOTS, MAX_BUILDING_LEVEL,
 };
 pub use game_state::{
     BuildAvailability, GameState, ADVENTURER_MIN_REPUTATION, MAX_ADVENTURERS, SAVE_VERSION,

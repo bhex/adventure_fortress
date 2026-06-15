@@ -190,6 +190,11 @@ fn preferred_anchors(kind: ActorKind) -> &'static [AnchorKind] {
             AnchorKind::Keep,
             AnchorKind::Courtyard,
         ],
+        ActorKind::Inhabitant(Role::Miner) => &[
+            AnchorKind::Building(fortress_core::Upgrade::Mine),
+            AnchorKind::Courtyard,
+            AnchorKind::Keep,
+        ],
         ActorKind::Inhabitant(Role::Peasant) => {
             &[AnchorKind::Courtyard, AnchorKind::Gate, AnchorKind::Walls]
         }

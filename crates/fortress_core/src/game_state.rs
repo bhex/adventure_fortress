@@ -16,7 +16,7 @@ use crate::rng::GameRng;
 use crate::skills::Skill;
 use crate::world::World;
 
-pub const SAVE_VERSION: u32 = 10;
+pub const SAVE_VERSION: u32 = 11;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 
@@ -38,6 +38,8 @@ pub enum BuildAvailability {
     MaxLevel,
     MissingRole(Role),
     CantAfford,
+    /// A build of this kind is already underway.
+    InProgress,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -160,8 +162,11 @@ impl GameState {
         }
     }
 
-    /// Whether the build menu may raise (or tier up) this building right now.
+    /// Whether the build menu may break ground on (or tier up) this building.
     pub fn build_availability(&self, upgrade: Upgrade) -> BuildAvailability {
+        if self.fortress.has_project(upgrade) {
+            return BuildAvailability::InProgress;
+        }
         let Some(next_level) = self.fortress.next_build_level(upgrade) else {
             return BuildAvailability::MaxLevel;
         };
@@ -176,16 +181,35 @@ impl GameState {
         BuildAvailability::Ok
     }
 
-    /// Pay the materials and raise the building. Errs with the blocking reason.
+    /// Pay the materials and break ground: the build is enqueued and the
+    /// workforce raises it over the following days. Errs with the blocker.
     pub fn construct(&mut self, upgrade: Upgrade) -> Result<String, BuildAvailability> {
         match self.build_availability(upgrade) {
             BuildAvailability::Ok => {
                 let level = self.fortress.next_build_level(upgrade).unwrap_or(1);
                 self.resources.apply_delta(&upgrade.build_cost(level).negated());
-                Ok(self.build_upgrade(upgrade))
+                self.fortress.enqueue_project(upgrade, level);
+                Ok(format!(
+                    "Work begins on the {} — {} worker-days of labor ahead.",
+                    upgrade.name(),
+                    upgrade.build_worker_days(level)
+                ))
             }
             blocked => Err(blocked),
         }
+    }
+
+    /// The labor the hold can put toward construction in a day: its general
+    /// hands (peasants and miners) plus a baseline of overseen effort.
+    pub fn build_workforce(&self) -> i32 {
+        let laborers = self
+            .inhabitants
+            .get_alive()
+            .iter()
+            .filter(|i| matches!(i.role, Role::Peasant | Role::Miner))
+            .count() as i32;
+        // even a hold of pure specialists can chip away a little each day
+        laborers + 1
     }
 
     /// Day-end passive tick: upgrades, food upkeep, morale cascade. Returns log lines.
@@ -213,6 +237,13 @@ impl GameState {
 
         // The wider war: darkness shifts, sites hold or fall.
         lines.extend(self.region.tick(&mut self.rng));
+
+        // Construction underway: the hold's laborers raise the front project a
+        // day's worth; finished works apply their bonuses (no second payment).
+        let workforce = self.build_workforce();
+        for upgrade in self.fortress.advance_projects(workforce) {
+            lines.push(self.build_upgrade(upgrade));
+        }
 
         // Refugee waves from fallen sites: survivors reach the gates over the
         // following days — the main road to rare specialists.
@@ -306,11 +337,12 @@ impl GameState {
         let practice_bonus: u32 = if self.fortress.morale >= 80 { 1 } else { 0 };
 
         // Daily practice: working your trade slowly builds the skill.
-        const WORKPLACES: [(Role, Upgrade); 4] = [
+        const WORKPLACES: [(Role, Upgrade); 5] = [
             (Role::Guard, Upgrade::Barracks),
             (Role::Farmer, Upgrade::Farm),
             (Role::Healer, Upgrade::Infirmary),
             (Role::Blacksmith, Upgrade::Blacksmith),
+            (Role::Miner, Upgrade::Mine),
         ];
         for (role, workplace) in WORKPLACES {
             if self.fortress.has_upgrade(workplace) {
@@ -444,8 +476,11 @@ impl GameState {
         // raw ore, the feedstock the forge turns into proper arms and armor.
         let mine_level = self.fortress.building_level(Upgrade::Mine);
         if mine_level > 0 {
-            let stone = [0, 3, 5, 8][mine_level.min(3) as usize];
-            let ore = [0, 2, 3, 5][mine_level.min(3) as usize];
+            // Miners draw far more from the seam than peasants filling in: each
+            // adds a measure of stone and, every other one, a measure of ore.
+            let miners = self.inhabitants.get_by_role(Role::Miner).len() as i64;
+            let stone = [0, 3, 5, 8][mine_level.min(3) as usize] + miners;
+            let ore = [0, 2, 3, 5][mine_level.min(3) as usize] + miners / 2;
             self.resources.apply_delta(&ResourceDelta { stone, ore, ..Default::default() });
         }
 
@@ -456,7 +491,11 @@ impl GameState {
         // Night fires: the hold burns timber for warmth and light. A real cost
         // once the woodpile matters; nothing burns if there's nothing to burn.
         let pop = self.inhabitants.count_alive() as i64;
-        let firewood = if pop > 0 { (pop / 6).max(1) + self.world.heating_extra() } else { 0 };
+        let mut firewood = if pop > 0 { (pop / 6).max(1) + self.world.heating_extra() } else { 0 };
+        // A Great Hearth warms the whole hold for less fuel.
+        if firewood > 0 && self.fortress.has_feature(crate::fortress::FortressFeature::GreatHearth) {
+            firewood = (firewood - 1).max(1);
+        }
         if firewood > 0 && self.resources.wood > 0 {
             let burned = firewood.min(self.resources.wood);
             self.resources.apply_delta(&ResourceDelta { wood: -burned, ..Default::default() });
@@ -504,12 +543,16 @@ impl GameState {
 
         // Spoilage: grain rots beyond what the stores can keep dry — the
         // Granary is what makes a deep larder possible.
-        let food_cap = match self.fortress.building_level(Upgrade::Granary) {
+        let mut food_cap = match self.fortress.building_level(Upgrade::Granary) {
             0 => 50,
             1 => 60,
             2 => 90,
             _ => 130,
         };
+        // The Deep Cellars keep far more grain dry.
+        if self.fortress.has_feature(crate::fortress::FortressFeature::DeepCellars) {
+            food_cap += 40;
+        }
         if self.resources.food > food_cap {
             let excess = self.resources.food - food_cap;
             self.resources.food = food_cap + excess * 3 / 4;
@@ -627,6 +670,12 @@ impl GameState {
             ));
         }
 
+        // A lasting work: a renowned hold may, once a run, complete a rare and
+        // permanent feature — earned by the name it has made for itself.
+        if let Some(line) = self.maybe_grant_feature() {
+            lines.push(line);
+        }
+
         lines
     }
 
@@ -642,6 +691,29 @@ impl GameState {
                 .get_alive()
                 .iter()
                 .any(|i| Skill::MAGIC.iter().any(|s| i.skills.xp(*s) >= 20))
+    }
+
+    /// A rare permanent boon, at most one per run. Granted to a hold that has
+    /// made a true name for itself (renown ≥ 50), by a low daily roll so it
+    /// feels earned, not automatic. Returns a log line when one is completed.
+    pub fn maybe_grant_feature(&mut self) -> Option<String> {
+        use crate::fortress::FortressFeature;
+        if !self.fortress.features.is_empty() || self.reputation < 50 {
+            return None;
+        }
+        if self.rng.random_range(0..100) >= 20 {
+            return None;
+        }
+        let feature = *FortressFeature::ALL
+            .get(self.rng.random_range(0..FortressFeature::ALL.len()))
+            .unwrap();
+        self.fortress.features.push(feature);
+        // Ramparts are a one-time standing boost; the rest read off the feature
+        // list where they apply (larder cap, heating burn, craft quality).
+        if feature == FortressFeature::Ramparts {
+            self.fortress.apply_defense_delta(8);
+        }
+        Some(format!("A lasting work is completed: {}. {}", feature.name(), feature.blurb()))
     }
 
     /// The whole item economy for a day: the forge works ore into equipment,
@@ -667,7 +739,13 @@ impl GameState {
                 let mut quality = Quality::from_smith_tier(tier);
                 // A proficient smith now and then turns out something better
                 // than their wont — a masterwork off a good day at the anvil.
-                if tier >= 4 && self.rng.random_range(0..100) < 15 {
+                // The Master Forge makes such days far likelier.
+                let lucky = if self.fortress.has_feature(crate::fortress::FortressFeature::MasterForge) {
+                    40
+                } else {
+                    15
+                };
+                if tier >= 4 && self.rng.random_range(0..100) < lucky {
                     let idx = (quality.index() + 1).min(Quality::Masterwork.index()) as usize;
                     quality = Quality::ALL[idx];
                 }
