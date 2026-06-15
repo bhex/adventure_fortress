@@ -1,0 +1,109 @@
+name: Release
+
+# Cut a release by pushing a version tag, e.g.:
+#   git tag v0.1.0 && git push origin v0.1.0
+# Each tagged push builds the game for Linux, macOS, and Windows and uploads the
+# packaged binaries to a GitHub Release. `workflow_dispatch` allows a dry run.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # upload release assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Bevy links against Linux audio/input/windowing system libraries.
+      - name: Install Bevy system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libasound2-dev \
+            libudev-dev \
+            libwayland-dev \
+            libxkbcommon-dev
+
+      - name: Build
+        run: cargo build --release --locked -p fortress_game --target ${{ matrix.target }}
+
+      # Stage the executable next to the runtime content/ it loads at startup
+      # (the game globs content/events/*.json relative to the executable).
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          staging="adventure_fortress-${{ matrix.target }}"
+          mkdir "$staging"
+          cp "target/${{ matrix.target }}/release/fortress_game" "$staging/"
+          cp -r content "$staging/"
+          [ -f README.md ] && cp README.md "$staging/" || true
+          [ -f LICENSE ] && cp LICENSE "$staging/" || true
+          tar czf "$staging.tar.gz" "$staging"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $staging = "adventure_fortress-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $staging | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/fortress_game.exe" -Destination $staging
+          Copy-Item content -Destination $staging -Recurse
+          if (Test-Path README.md) { Copy-Item README.md -Destination $staging }
+          if (Test-Path LICENSE) { Copy-Item LICENSE -Destination $staging }
+          Compress-Archive -Path $staging -DestinationPath "$staging.zip"
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            adventure_fortress-${{ matrix.target }}.tar.gz
+            adventure_fortress-${{ matrix.target }}.zip
+          fail_on_unmatched_files: false
+
+      # On a manual (non-tag) run there's no release to attach to — keep the
+      # archive as a workflow artifact so the packaging can still be verified.
+      - name: Upload build artifact (dry run)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: adventure_fortress-${{ matrix.target }}
+          path: |
+            adventure_fortress-${{ matrix.target }}.tar.gz
+            adventure_fortress-${{ matrix.target }}.zip
+          if-no-files-found: ignore

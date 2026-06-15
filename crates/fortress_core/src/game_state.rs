@@ -16,7 +16,7 @@ use crate::rng::GameRng;
 use crate::skills::Skill;
 use crate::world::World;
 
-pub const SAVE_VERSION: u32 = 13;
+pub const SAVE_VERSION: u32 = 14;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 
@@ -206,6 +206,47 @@ impl GameState {
             }
             blocked => Err(blocked),
         }
+    }
+
+    /// Progress-Quest construction: the next building a hold left to its own
+    /// devices should raise. Returns `None` when a project is already underway
+    /// or nothing affordable is worth starting. Survival economy comes first
+    /// (food, then a sustainable wood supply, then beds and a deeper larder),
+    /// then walls and the wider economy; new buildings are preferred over tiering
+    /// up an existing one so the hold broadens before it deepens.
+    pub fn auto_build_pick(&self) -> Option<Upgrade> {
+        if !self.fortress.projects.is_empty() {
+            return None; // one project at a time
+        }
+        const PRIORITY: [Upgrade; 15] = [
+            Upgrade::Farm,
+            Upgrade::Lumberyard,
+            Upgrade::Housing,
+            Upgrade::Granary,
+            Upgrade::Watchtower,
+            Upgrade::Infirmary,
+            Upgrade::Mine,
+            Upgrade::Blacksmith,
+            Upgrade::Barracks,
+            Upgrade::Tavern,
+            Upgrade::TrainingYard,
+            Upgrade::Workshop,
+            Upgrade::Shrine,
+            Upgrade::WizardTower,
+            Upgrade::Graveyard,
+        ];
+        for want_new in [true, false] {
+            for &u in &PRIORITY {
+                let is_new = self.fortress.building_level(u) == 0;
+                if is_new != want_new {
+                    continue;
+                }
+                if self.build_availability(u) == BuildAvailability::Ok {
+                    return Some(u);
+                }
+            }
+        }
+        None
     }
 
     /// The labor the hold can put toward construction in a day: its general
@@ -486,6 +527,13 @@ impl GameState {
                 2 => 5,
                 _ => 7,
             };
+            // The harvest scales with the hands that work it, so a growing hold
+            // can feed itself: each farmer is a full field-hand, and idle peasants
+            // pitch in at harvest. (A farmer nets well above their keep; a peasant
+            // roughly earns their own — population stays close to food-neutral.)
+            let farmers = self.inhabitants.get_by_role(Role::Farmer).len() as i64;
+            let helpers = self.inhabitants.get_by_role(Role::Peasant).len() as i64;
+            let field_hands = 2 * farmers + helpers / 2;
             let skill_bonus: u32 = self
                 .inhabitants
                 .get_by_role(Role::Farmer)
@@ -510,7 +558,7 @@ impl GameState {
                 0
             };
             // Season and weather decide whether the fields are generous or grim.
-            let raw = base + skill_bonus as i64 + tool_bonus;
+            let raw = base + field_hands + skill_bonus as i64 + tool_bonus;
             let harvest = raw * self.world.farm_mult_pct() / 100;
             self.resources.apply_delta(&ResourceDelta { food: harvest, ..Default::default() });
             lines.push(if harvest < raw {
@@ -524,15 +572,17 @@ impl GameState {
 
         // Spoilage: grain rots beyond what the stores can keep dry — the
         // Granary is what makes a deep larder possible.
+        // A deep larder is what carries a hold through winter: stores must hold a
+        // summer surplus big enough to bridge the lean months.
         let mut food_cap = match self.fortress.building_level(Upgrade::Granary) {
-            0 => 50,
-            1 => 60,
-            2 => 90,
-            _ => 130,
+            0 => 60,
+            1 => 100,
+            2 => 160,
+            _ => 220,
         };
         // The Deep Cellars keep far more grain dry.
         if self.fortress.has_feature(crate::fortress::FortressFeature::DeepCellars) {
-            food_cap += 40;
+            food_cap += 60;
         }
         if self.resources.food > food_cap {
             let excess = self.resources.food - food_cap;
@@ -821,6 +871,61 @@ impl GameState {
         best
     }
 
+    /// The highest tier of magic any living soul commands, across all the magical
+    /// arts — the Wizard Tower's power ceiling for binding and lifting.
+    pub fn best_magic_tier(&self) -> Option<crate::skills::SkillTier> {
+        let tier_of = |skills: &crate::skills::SkillSet| {
+            Skill::MAGIC.iter().map(|s| skills.tier(*s)).max()
+        };
+        let mut best = self.player.as_ref().filter(|p| p.is_alive()).and_then(|p| tier_of(&p.skills));
+        for i in self.inhabitants.get_alive() {
+            best = best.max(tier_of(&i.skills));
+        }
+        best
+    }
+
+    /// The deepest Warding worn by a wall-defender (commander or guard) — what
+    /// turns demon blows aside in `engine::mitigate_damage`.
+    pub fn best_equipped_ward(&self) -> Option<crate::items::EnchantTier> {
+        let mut best: Option<crate::items::EnchantTier> = None;
+        let mut consider = |lo: &crate::items::Loadout| {
+            for item in lo.iter() {
+                if let Some((crate::items::Enchant::Warding, tier)) = item.enchant {
+                    best = best.max(Some(tier));
+                }
+            }
+        };
+        if let Some(p) = self.player.as_ref().filter(|p| p.is_alive()) {
+            consider(&p.loadout);
+        }
+        for i in self.inhabitants.get_by_role(Role::Guard) {
+            consider(&i.loadout);
+        }
+        best
+    }
+
+    /// The deepest Vital charm anyone in the hold bears — a daily lift to morale.
+    pub fn best_equipped_vital(&self) -> Option<crate::items::EnchantTier> {
+        let mut best: Option<crate::items::EnchantTier> = None;
+        let mut consider = |lo: &crate::items::Loadout| {
+            for item in lo.iter() {
+                if let Some((crate::items::Enchant::Vital, tier)) = item.enchant {
+                    best = best.max(Some(tier));
+                }
+            }
+        };
+        if let Some(p) = self.player.as_ref() {
+            consider(&p.loadout);
+        }
+        for i in self.inhabitants.inhabitants.iter().filter(|i| i.is_alive) {
+            consider(&i.loadout);
+        }
+        for a in &self.adventurers {
+            consider(&a.loadout);
+        }
+        best
+    }
+
     /// The smith keeps everything in trim — both the armory and the gear in hand.
     fn maintain_equipment(&mut self, points: i32) {
         for item in self.items.items.iter_mut() {
@@ -842,7 +947,6 @@ impl GameState {
     /// and everything in use wears a little. Returns log lines.
     fn craft_and_maintain(&mut self) -> Vec<String> {
         const ORE_PER_ITEM: i64 = 3;
-        const RESIDUE_PER_ENCHANT: i64 = 3;
         const ARMORY_CAP: usize = 40;
         let mut lines = Vec::new();
 
@@ -879,27 +983,20 @@ impl GameState {
             }
         }
 
-        // ---- Wizard Tower: residue binds an enchantment to the best plain item ----
-        if self.fortress.building_level(Upgrade::WizardTower) > 0
-            && self.resources.residue >= RESIDUE_PER_ENCHANT
-            && self.has_mage()
-        {
-            if let Some(idx) = self.items.best_unenchanted_index() {
-                let kind = self.items.items[idx].kind;
-                let enchant = Enchant::for_kind(kind);
-                self.items.items[idx].enchant = Some(enchant);
-                self.resources
-                    .apply_delta(&ResourceDelta { residue: -RESIDUE_PER_ENCHANT, ..Default::default() });
-                lines.push(format!(
-                    "At the Wizard Tower, residue is worked into a {} — now {}.",
-                    kind.noun(),
-                    self.items.items[idx].label()
-                ));
-            }
-        }
+        // ---- Wizard Tower: lift a curse, then bind the day's fitting enchant ----
+        lines.extend(self.work_the_wizard_tower());
 
         // ---- auto-equip: the best arms reach the ablest hands ----
         self.redistribute_equipment();
+
+        // ---- a vital charm worn anywhere warms the hold's heart each day ----
+        if let Some(tier) = self.best_equipped_vital() {
+            let lift = match tier {
+                crate::items::EnchantTier::Greater => 2,
+                crate::items::EnchantTier::Lesser => 1,
+            };
+            self.fortress.apply_morale_delta(lift);
+        }
 
         // ---- the smith keeps everything in trim, armory and gear in hand ----
         if smithy_level > 0 && self.inhabitants.has_role(Role::Blacksmith) {
@@ -922,6 +1019,105 @@ impl GameState {
         }
 
         lines
+    }
+
+    /// The Wizard Tower's daily work, entirely hands-off: a deft enough mage first
+    /// tries to lift a curse, otherwise binds the day's most fitting enchant — the
+    /// choice shaped by the threat pressing on the hold and the bearer it serves.
+    /// One working a day. Returns log lines.
+    fn work_the_wizard_tower(&mut self) -> Vec<String> {
+        use crate::items::EnchantTier;
+        use crate::skills::SkillTier;
+        const LESSER_RESIDUE: i64 = 3;
+        const GREATER_RESIDUE: i64 = 6;
+        const LIFT_RESIDUE: i64 = 5;
+        let mut lines = Vec::new();
+
+        if self.fortress.building_level(Upgrade::WizardTower) == 0 || !self.has_mage() {
+            return lines;
+        }
+        let Some(mage_tier) = self.best_magic_tier() else {
+            return lines;
+        };
+
+        // ---- curse-lifting: an Expert+ mage can break a Hexed binding ----
+        if mage_tier >= SkillTier::Expert && self.resources.residue >= LIFT_RESIDUE {
+            if let Some(idx) = self.items.first_cursed_index() {
+                self.resources
+                    .apply_delta(&ResourceDelta { residue: -LIFT_RESIDUE, ..Default::default() });
+                let noun = self.items.items[idx].kind.noun();
+                // Only an Expert risks a botch; a Master or better lifts cleanly.
+                let botch = mage_tier < SkillTier::Master && self.rng.random_range(0..100) < 30;
+                if botch {
+                    lines.push(format!(
+                        "At the Wizard Tower, the lifting falters — the curse on the {noun} holds."
+                    ));
+                } else {
+                    self.items.items[idx].enchant = None;
+                    lines.push(format!(
+                        "At the Wizard Tower, a curse is broken — the {noun} is clean steel again."
+                    ));
+                }
+                return lines; // a day's working is spent
+            }
+        }
+
+        // ---- binding: choose the enchant by threat, then the item to carry it ----
+        if self.resources.residue < LESSER_RESIDUE {
+            return lines;
+        }
+        let (enchant, target) = self.pick_binding();
+        let Some(idx) = target else {
+            return lines;
+        };
+        // Greater needs a Skilled+ mage and the deeper residue cost.
+        let tier = if mage_tier >= SkillTier::Skilled && self.resources.residue >= GREATER_RESIDUE {
+            EnchantTier::Greater
+        } else {
+            EnchantTier::Lesser
+        };
+        let cost = if tier == EnchantTier::Greater { GREATER_RESIDUE } else { LESSER_RESIDUE };
+        self.resources.apply_delta(&ResourceDelta { residue: -cost, ..Default::default() });
+        self.items.items[idx].enchant = Some((enchant, tier));
+        lines.push(format!(
+            "At the Wizard Tower, residue is worked into a {} — now {}.",
+            self.items.items[idx].kind.noun(),
+            self.items.items[idx].label()
+        ));
+        lines
+    }
+
+    /// Decide the day's binding: which enchant best serves the hold now, and which
+    /// plain item should carry it. Threat-aware but rng-free and deterministic.
+    fn pick_binding(&self) -> (Enchant, Option<usize>) {
+        let darkness_high = matches!(
+            self.region.band(),
+            crate::region::DarknessBand::Deep | crate::region::DarknessBand::Overwhelming
+        );
+        let morale_fragile = self.fortress.morale < 40;
+
+        // 1) the dark presses hardest: a ward on the wall (armor, else a blade)
+        if darkness_high {
+            if let Some(idx) = self
+                .items
+                .best_unenchanted_of_kind(ItemKind::Armor)
+                .or_else(|| self.items.best_unenchanted_of_kind(ItemKind::Weapon))
+            {
+                return (Enchant::Warding, Some(idx));
+            }
+        }
+        // 2) spirits are low: a heartening charm on a piece of armor
+        if morale_fragile {
+            if let Some(idx) = self.items.best_unenchanted_of_kind(ItemKind::Armor) {
+                return (Enchant::Vital, Some(idx));
+            }
+        }
+        // 3) otherwise the item that matters most, enchanted to its own nature
+        if let Some(idx) = self.items.best_unenchanted_index() {
+            let kind = self.items.items[idx].kind;
+            return (Enchant::for_kind(kind), Some(idx));
+        }
+        (Enchant::Keen, None)
     }
 
     /// Tend the single most-wounded soul (the commander included) by `amount`.

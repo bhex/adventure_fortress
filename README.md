@@ -10,7 +10,18 @@ Built in Rust as a Bevy game (`fortress_game`) on top of a pure, deterministic
 logic crate (`fortress_core`). Game content lives as engine-agnostic JSON in
 `content/events/`.
 
-## Play
+## Download & run
+
+Prebuilt binaries for **Linux**, **macOS** (Apple silicon), and **Windows** are
+published on the [Releases page](../../releases). Download the archive for your
+system, unpack it, and run the `fortress_game` executable **from inside the
+unpacked folder** — the game loads `content/` from beside the executable, so keep
+them together. Saves are written to `save.json` in that folder.
+
+On Linux you still need Bevy's runtime libraries (see
+[Linux build dependencies](#linux-build-dependencies)).
+
+## Play (from source)
 
 ```bash
 cargo run -p fortress_game        # play (opens a window)

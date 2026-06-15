@@ -154,6 +154,14 @@ fn tick_clock(
         clock.dawn_done = true;
         clock.skipping = false; // skip-to-dawn arrived
         let day = game.0.fortress.day;
+        // Under auto-mode the hold builds itself, raising the next thing it needs.
+        if auto.0 {
+            if let Some(upgrade) = game.0.auto_build_pick() {
+                if let Ok(line) = game.0.construct(upgrade) {
+                    log.push(format!("Day {day}: {line} (auto)"));
+                }
+            }
+        }
         let rolled = roll(&deck.0, day, &mut game.0, ctl.last_event_name.as_deref()).cloned();
         match rolled {
             Some(event) => {

@@ -29,7 +29,9 @@ pub use game_state::{
     BuildAvailability, GameState, ADVENTURER_MIN_REPUTATION, MAX_ADVENTURERS, SAVE_VERSION,
 };
 pub use inhabitants::{generate_inhabitant, Inhabitant, InhabitantManager, Role, Trait};
-pub use items::{Enchant, Item, ItemForm, ItemKind, ItemStock, Loadout, Material, Quality};
+pub use items::{
+    Enchant, EnchantTier, Item, ItemForm, ItemKind, ItemStock, Loadout, Material, Quality,
+};
 pub use player::{ClassKind, PlayerCharacter, StatKind, Stats};
 pub use region::{darkness_band, DarknessBand, Region, Site, SiteKind};
 pub use resources::{amount_phrase, band_for, ResourceDelta, ResourceKind, Resources, StockBand};

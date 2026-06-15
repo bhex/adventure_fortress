@@ -518,10 +518,17 @@ fn apply_effect(effect: &Effect, event: &Event, gs: &mut GameState, result: &mut
         }
 
         Effect::GrantItem { kind, quality, enchant, artifact, name } => {
+            // A granted enchant is worked Greater on a one-of-a-kind artifact,
+            // Lesser on an ordinary find.
+            let tier = if *artifact {
+                crate::items::EnchantTier::Greater
+            } else {
+                crate::items::EnchantTier::Lesser
+            };
             let item = crate::items::Item {
                 kind: *kind,
                 quality: *quality,
-                enchant: *enchant,
+                enchant: enchant.map(|e| (e, tier)),
                 condition: 100,
                 artifact: *artifact,
                 name: name.clone(),
@@ -577,6 +584,15 @@ pub(crate) fn mitigate_damage(health: i32, event: &Event, gs: &GameState) -> i32
             crate::region::DarknessBand::Deep => h += h / 4,
             crate::region::DarknessBand::Overwhelming => h += h / 2,
             _ => {}
+        }
+        // A warding enchant worn on the wall turns the dark aside — Greater
+        // halves the demon's bite, Lesser blunts a quarter of it.
+        if let Some(tier) = gs.best_equipped_ward() {
+            let kept = match tier {
+                crate::items::EnchantTier::Greater => 2,
+                crate::items::EnchantTier::Lesser => 3,
+            };
+            h = -((-h * kept) / 4);
         }
     }
     if event.has_tag("combat") {

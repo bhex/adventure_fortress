@@ -29,6 +29,16 @@ pub fn default_content_dir() -> Result<PathBuf, ContentError> {
     if cwd.is_dir() {
         return Ok(cwd);
     }
+    // A shipped binary carries `content/` next to the executable; this finds it
+    // however (and from wherever) the game was launched.
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let beside_exe = exe_dir.join("content/events");
+            if beside_exe.is_dir() {
+                return Ok(beside_exe);
+            }
+        }
+    }
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../content/events");
     if workspace.is_dir() {
         return Ok(workspace);

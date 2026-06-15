@@ -87,7 +87,7 @@ impl Quality {
 }
 
 /// A worked-in magical property. Most help; the Hexed curse hurts and rides in
-/// on artifacts you can't simply discard.
+/// on artifacts you can't simply discard. Each binding has a `EnchantTier`.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Enchant {
@@ -97,8 +97,30 @@ pub enum Enchant {
     Guarding,
     /// Tool: never tires, never dulls.
     Tireless,
+    /// Anti-demon: the dark turns aside from whoever bears it on the wall.
+    Warding,
+    /// Heartening: a charm that lifts the spirits of the whole hold.
+    Vital,
     /// A cursed thing: drags on whoever bears it.
     Hexed,
+}
+
+/// How deeply an enchantment is worked — Greater costs more residue and a defter
+/// mage, and bites harder.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[serde(rename_all = "lowercase")]
+pub enum EnchantTier {
+    Lesser,
+    Greater,
+}
+
+impl EnchantTier {
+    pub fn name(&self) -> &'static str {
+        match self {
+            EnchantTier::Lesser => "lesser",
+            EnchantTier::Greater => "greater",
+        }
+    }
 }
 
 impl Enchant {
@@ -107,11 +129,14 @@ impl Enchant {
             Enchant::Keen => "keen",
             Enchant::Guarding => "guarding",
             Enchant::Tireless => "tireless",
+            Enchant::Warding => "warding",
+            Enchant::Vital => "vital",
             Enchant::Hexed => "hexed",
         }
     }
 
-    /// The enchant that best suits a freshly-made item of this kind.
+    /// The enchant that best suits a freshly-made item of this kind, absent any
+    /// pressing threat — the Wizard Tower's default pick.
     pub fn for_kind(kind: ItemKind) -> Enchant {
         match kind {
             ItemKind::Weapon => Enchant::Keen,
@@ -120,11 +145,16 @@ impl Enchant {
         }
     }
 
-    /// Flat bonus (or penalty) added to the item's rating.
-    pub fn rating_delta(&self) -> i32 {
+    /// Flat bonus (or penalty) added to the item's rating, scaled by tier. The
+    /// curse drags the same however deeply it's worked.
+    pub fn rating_delta(&self, tier: EnchantTier) -> i32 {
         match self {
-            Enchant::Keen | Enchant::Guarding | Enchant::Tireless => 2,
             Enchant::Hexed => -2,
+            // beneficial: Lesser +1, Greater +2
+            _ => match tier {
+                EnchantTier::Lesser => 1,
+                EnchantTier::Greater => 2,
+            },
         }
     }
 }
@@ -236,8 +266,9 @@ const FULL_CONDITION: i32 = 100;
 pub struct Item {
     pub kind: ItemKind,
     pub quality: Quality,
+    /// The bound enchantment and how deeply it's worked, if any.
     #[serde(default)]
-    pub enchant: Option<Enchant>,
+    pub enchant: Option<(Enchant, EnchantTier)>,
     #[serde(default = "full_condition")]
     pub condition: i32,
     /// Artifacts are rare, named, and do not wear out.
@@ -272,8 +303,15 @@ impl Item {
         }
     }
 
+    /// An item carrying a Greater binding — the shape most callers (and the
+    /// strongest arc artifacts) want.
     pub fn enchanted(kind: ItemKind, quality: Quality, enchant: Enchant) -> Item {
-        Item { enchant: Some(enchant), ..Item::new(kind, quality) }
+        Item { enchant: Some((enchant, EnchantTier::Greater)), ..Item::new(kind, quality) }
+    }
+
+    /// The bound enchant's kind, if any (tier dropped).
+    pub fn enchant_kind(&self) -> Option<Enchant> {
+        self.enchant.map(|(e, _)| e)
     }
 
     /// A forged item with a form and material — what the smith turns out. The
@@ -290,8 +328,8 @@ impl Item {
     /// whole item so even a crude blade beats bare hands.
     pub fn rating(&self) -> i32 {
         let mut r = self.quality.index() + 1;
-        if let Some(e) = self.enchant {
-            r += e.rating_delta();
+        if let Some((e, tier)) = self.enchant {
+            r += e.rating_delta(tier);
         }
         // A worn item helps less; a wreck (but not yet broken) barely at all.
         if !self.artifact && self.condition <= FULL_CONDITION / 2 {
@@ -323,7 +361,12 @@ impl Item {
             return name.clone();
         }
         let mut s = String::from(self.quality.name());
-        if let Some(e) = self.enchant {
+        if let Some((e, tier)) = self.enchant {
+            // a Greater binding is worth naming; Lesser is the quiet baseline
+            if tier == EnchantTier::Greater {
+                s.push(' ');
+                s.push_str(tier.name());
+            }
             s.push(' ');
             s.push_str(e.name());
         }
@@ -463,6 +506,23 @@ impl ItemStock {
             .filter(|(_, i)| i.enchant.is_none() && !i.artifact && !i.is_broken())
             .max_by_key(|(_, i)| i.rating())
             .map(|(idx, _)| idx)
+    }
+
+    /// The best enchantable item of a given kind — so a threat-aware Wizard Tower
+    /// can put a ward on armor, a keen edge on a blade, and so on.
+    pub fn best_unenchanted_of_kind(&self, kind: ItemKind) -> Option<usize> {
+        self.items
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| i.kind == kind && i.enchant.is_none() && !i.artifact && !i.is_broken())
+            .max_by_key(|(_, i)| i.rating())
+            .map(|(idx, _)| idx)
+    }
+
+    /// The first item carrying the Hexed curse (armory only) — the Wizard Tower's
+    /// candidate for a lifting. Returns its index.
+    pub fn first_cursed_index(&self) -> Option<usize> {
+        self.items.iter().position(|i| i.enchant_kind() == Some(Enchant::Hexed))
     }
 
     /// A day's wear across the carried items, then sweep up anything that broke.

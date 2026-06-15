@@ -193,6 +193,40 @@ fn auto_mode_plays_a_full_deterministic_run() {
     assert_ne!(auto_run(7), auto_run(8));
 }
 
+#[test]
+fn an_auto_run_survives_well_past_the_turning_seasons() {
+    // A hold left entirely to the engine — events *and* construction on auto —
+    // should keep its feet well past the seasons turning, on a representative
+    // seed. This guards the food / winter / morale balance against regression.
+    let deck = deck();
+    let player =
+        PlayerCharacter::new("Auto", ClassKind::Steward, Stats { might: 5, wit: 5, heart: 4 });
+    let mut gs = GameState::new_game(4, "Hold", player);
+    let mut last: Option<String> = None;
+    let target = 120;
+    while !gs.is_game_over() && gs.fortress.day <= target {
+        let day = gs.fortress.day;
+        // a hold left to itself raises the next building it needs
+        if let Some(upgrade) = gs.auto_build_pick() {
+            let _ = gs.construct(upgrade);
+        }
+        if let Some(event) = roll(&deck, day, &mut gs, last.as_deref()).cloned() {
+            last = Some(event.name.clone());
+            if let Some(idx) = auto_pick(&event, &gs) {
+                resolve(&event, idx, &mut gs);
+            }
+        }
+        gs.apply_daily_effects();
+        gs.fortress.advance_day();
+    }
+    assert!(
+        !gs.is_game_over(),
+        "a competently-run hold should survive to day {target} (it fell on day {} at morale {})",
+        gs.fortress.day,
+        gs.fortress.morale
+    );
+}
+
 fn run_bot(seed: u64) -> String {
     let deck = deck();
     let player = PlayerCharacter::new("Bot", ClassKind::Warlord, Stats { might: 8, wit: 3, heart: 3 });

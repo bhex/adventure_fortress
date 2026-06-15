@@ -315,7 +315,7 @@ fn mitigation_python_parity_on_odd_values() {
 #[test]
 fn daily_farm_yield() {
     let mut gs = test_state();
-    gs.resources.food = 30; // below the 50 granary-less cap, so nothing spoils
+    gs.resources.food = 30; // below the granary-less cap, so nothing spoils
     gs.fortress.add_building(Upgrade::Farm);
     gs.apply_daily_effects();
     assert_eq!(gs.resources.food, 33); // Farm I base harvest of 3
@@ -531,8 +531,8 @@ fn skilled_farmers_raise_harvest() {
     gs.inhabitants.add(f);
     let food_before = gs.resources.food;
     gs.apply_daily_effects();
-    // Farm I base 3 + 4/2 = 5 harvest, minus 1 upkeep (1 inhabitant)
-    assert_eq!(gs.resources.food, food_before + 5 - 1);
+    // Farm I base 3 + field_hands 2 (one farmer) + skill 4/2=2 = 7, minus 1 upkeep
+    assert_eq!(gs.resources.food, food_before + 7 - 1);
 }
 
 #[test]
@@ -666,7 +666,7 @@ fn deep_cellars_deepen_the_larder() {
     use fortress_core::FortressFeature;
     let mut gs = test_state();
     gs.inhabitants.add(Inhabitant::new("F", Role::Farmer));
-    gs.resources.food = 200; // well over the base 50 cap
+    gs.resources.food = 200; // well over the base 60 cap
     gs.apply_daily_effects();
     let capped_plain = gs.resources.food;
     // with the Deep Cellars, far more grain survives the spoilage sweep
@@ -1370,8 +1370,8 @@ fn fine_tools_lift_the_harvest() {
     gs.inhabitants.add(Inhabitant::new("F", Role::Farmer));
     gs.items.add(Item::new(ItemKind::Tool, Quality::Fine)); // rating 3 -> +1 harvest
     gs.apply_daily_effects();
-    // Farm I base 3 + tool 1 = 4, minus 1 upkeep
-    assert_eq!(gs.resources.food, 30 + 4 - 1);
+    // Farm I base 3 + field_hands 2 (one farmer) + tool 1 = 6, minus 1 upkeep
+    assert_eq!(gs.resources.food, 30 + 6 - 1);
 }
 
 #[test]
@@ -1413,6 +1413,78 @@ fn wizard_tower_enchants_with_residue() {
     gs.apply_daily_effects();
     assert_eq!(gs.resources.residue, 2, "binding an enchant spends residue");
     assert!(gs.items.items[0].enchant.is_some(), "the item is now enchanted");
+}
+
+#[test]
+fn a_greater_binding_needs_a_defter_mage_and_more_residue() {
+    let make = |residue: i64| {
+        let mut gs = test_state();
+        gs.fortress.add_building(Upgrade::WizardTower);
+        let mut mage = Inhabitant::new("Mage", Role::Peasant);
+        mage.skills.train(Skill::Sorcery, 100); // Skilled — deft enough for Greater
+        gs.inhabitants.add(mage);
+        gs.items.add(Item::new(ItemKind::Weapon, Quality::Plain));
+        gs.resources.residue = residue;
+        gs.apply_daily_effects();
+        gs
+    };
+    // ample residue + a Skilled mage -> a Greater binding, deeper cost
+    let gs = make(6);
+    let (kind, tier) = gs.items.items[0].enchant.expect("the blade is enchanted");
+    assert_eq!((kind, tier), (Enchant::Keen, EnchantTier::Greater));
+    assert_eq!(gs.resources.residue, 0, "a Greater binding spends the deeper residue");
+    // the same mage with only Lesser's worth of residue settles for Lesser
+    let gs = make(5);
+    assert_eq!(gs.items.items[0].enchant.unwrap().1, EnchantTier::Lesser);
+    assert_eq!(gs.resources.residue, 2);
+}
+
+#[test]
+fn the_wizard_tower_wards_against_a_pressing_dark() {
+    let bind_under = |darkness: i32| {
+        let mut gs = test_state();
+        gs.fortress.add_building(Upgrade::WizardTower);
+        let mut mage = Inhabitant::new("Mage", Role::Peasant);
+        mage.skills.train(Skill::Sorcery, 100);
+        gs.inhabitants.add(mage);
+        gs.items.add(Item::new(ItemKind::Armor, Quality::Fine));
+        gs.resources.residue = 6;
+        gs.region.darkness = darkness;
+        gs.apply_daily_effects();
+        gs.items.items[0].enchant.expect("the harness is enchanted").0
+    };
+    // when the dark presses, the tower wards; in calm it does what suits the kind
+    assert_eq!(bind_under(95), Enchant::Warding, "heavy darkness calls for a ward");
+    assert_eq!(bind_under(0), Enchant::Guarding, "calm: armor takes its natural guard");
+}
+
+#[test]
+fn a_master_mage_lifts_a_curse_cleanly() {
+    let lift = || {
+        let mut gs = test_state();
+        gs.fortress.add_building(Upgrade::WizardTower);
+        let mut mage = Inhabitant::new("Mage", Role::Peasant);
+        mage.skills.train(Skill::Sorcery, 300); // Master — lifts without botch
+        gs.inhabitants.add(mage);
+        gs.items.add(Item::enchanted(ItemKind::Armor, Quality::Fine, Enchant::Hexed));
+        gs.items.add(Item::new(ItemKind::Weapon, Quality::Plain));
+        gs.resources.residue = 8;
+        gs.apply_daily_effects();
+        gs
+    };
+    let gs = lift();
+    // no item anywhere still bears the curse, and the plain blade went untouched
+    // (a day's working is spent on the lifting, not a fresh binding)
+    assert!(
+        gs.items.items.iter().all(|i| i.enchant.is_none()),
+        "the curse is broken and nothing new was bound the same day"
+    );
+    assert_eq!(gs.resources.residue, 3, "lifting spends residue (8 - 5)");
+    // and the whole thing replays identically
+    assert_eq!(
+        serde_json::to_string(&gs).unwrap(),
+        serde_json::to_string(&lift()).unwrap()
+    );
 }
 
 #[test]
@@ -1493,7 +1565,7 @@ fn artifacts_never_wear_out() {
     let mut art = Item {
         kind: ItemKind::Weapon,
         quality: Quality::Masterwork,
-        enchant: Some(Enchant::Keen),
+        enchant: Some((Enchant::Keen, EnchantTier::Greater)),
         condition: 100,
         artifact: true,
         name: Some("Dawnedge".to_string()),
@@ -1658,8 +1730,9 @@ fn winter_thins_the_harvest() {
     gs.apply_daily_effects();
     let w = gs.world;
     assert_eq!(w.season, Season::Winter);
-    // base 3, no skill/tools -> raw 3; harvest scaled by season+weather; -1 upkeep
-    let expected = 10 + 3 * w.farm_mult_pct() / 100 - 1;
+    // base 3 + field_hands 2 (one farmer), no skill/tools -> raw 5; scaled by
+    // season+weather; -1 upkeep
+    let expected = 10 + 5 * w.farm_mult_pct() / 100 - 1;
     assert_eq!(gs.resources.food, expected);
     assert!(gs.resources.food < 12, "winter should bite into the larder");
 }
