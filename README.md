@@ -10,6 +10,11 @@ Built in Rust as a Bevy game (`fortress_game`) on top of a pure, deterministic
 logic crate (`fortress_core`). Game content lives as engine-agnostic JSON in
 `content/events/`.
 
+<img width="1918" height="1078" alt="{89FF470D-DCBD-40CA-8A8B-35BFB5FC9F9C}" src="https://github.com/user-attachments/assets/76c0661a-3c24-4b3d-99d1-40e80766b3d5" />
+
+<img width="1918" height="1078" alt="{F2835613-E6FA-4B91-A928-9B86D7A71701}" src="https://github.com/user-attachments/assets/549993a3-e425-41c9-9807-255f8f6a7c16" />
+
+
 ## Download & run
 
 Prebuilt binaries for **Linux**, **macOS** (Apple silicon & Intel), and **Windows** are
