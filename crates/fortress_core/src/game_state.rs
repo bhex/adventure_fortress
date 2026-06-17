@@ -16,7 +16,7 @@ use crate::rng::GameRng;
 use crate::skills::Skill;
 use crate::world::World;
 
-pub const SAVE_VERSION: u32 = 15;
+pub const SAVE_VERSION: u32 = 16;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 

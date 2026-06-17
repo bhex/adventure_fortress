@@ -117,7 +117,7 @@ fn title_buttons(
                 Ok(gs) => {
                     log.push(format!("Welcome back to {}.", gs.fortress.name));
                     commands.insert_resource(Game(gs));
-                    commands.insert_resource(crate::clock::GameClock::default());
+                    commands.insert_resource(crate::clock::DayCycle::default());
                     next_state.set(AppState::FortressView);
                 }
                 Err(e) => {

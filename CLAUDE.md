@@ -39,7 +39,7 @@ crates/fortress_core/         # pure, deterministic, fully tested
   inhabitants.rs  # Inhabitant list: Role (incl. Miner) + Trait enums, damage/heal/morale
   player.rs       # PlayerCharacter (the commander) + ClassKind
   skills.rs       # SkillSet: skills × tiers, xp-based growth
-  region.rs       # the darkness war: Sites, darkness 0-100, portal pressure, refugees, world end-state (survivor camps)
+  region.rs       # the darkness war: positioned Sites (Coord on a REGION_W×REGION_H grid, fortress at FORTRESS_POS centre), demon portals, darkness 0-100 + spatial blight reach, portal-proximity fall order, distance-based expedition_days, refugees, world end-state (survivor camps)
   world.rs        # the turning year: Season + Weather, derived from (run_seed, day); farm/heating/morale/combat modifiers
   adventurers.rs  # heroes who arrive on renown/darkness
   battle.rs       # fight_battle -> multi-round, per-combatant, narrated BattleReport
@@ -50,10 +50,12 @@ crates/fortress_core/         # pure, deterministic, fully tested
 
 crates/fortress_game/         # Bevy front-end (untested by design)
   main.rs, ui.rs, map.rs, actors.rs, clock.rs, modal.rs, build.rs,
-  region_panel.rs, roster.rs, charcreate.rs, gameover.rs, picking.rs, bridge.rs
+  region_map.rs (overworld terrain+roads, value-noise from run_seed, never serialized),
+  region_panel.rs (regional map view: half-block terrain into the shared terminal + docked panel),
+  roster.rs, charcreate.rs, gameover.rs, picking.rs, bridge.rs
 ```
 
-Game loop: clock runs in real time → at dawn `engine::roll()` picks today's event (or a quiet day) → fires at a random hour as a modal (or auto-resolves if `event.auto`) → `resolve()` pays cost and dispatches effects → at midnight `apply_daily_effects()` runs the daily tick and `advance_day()` + autosave. Defeat at morale 0 **or** if the commander falls.
+Game loop (event-driven, `clock.rs`'s `DayCycle`): each day *arrives* with a short dawn gradient sweep (the map lightens night→day over `SWEEP_SECONDS`) while `engine::roll()` picks today's event (or a quiet day) → when the sweep completes the event fires as a modal (or auto-resolves if `event.auto`, no choice, or auto-mode) → `resolve()` pays cost and dispatches effects → `bridge::finish_day` runs `apply_daily_effects()` + `advance_day()` + autosave (inline for the auto paths; in `settle_after_modal` on returning from the modal) → the day **settles** and waits for the player to advance (Space / N / the HUD "next day" button), or auto-advances under auto-mode. There is no real-time clock and no speed controls; the map is static (no wandering — `actors.rs` places each soul at their work station) and only redraws when the gradient, layout, actors, hover, or selection change. Defeat at morale 0 **or** if the commander falls.
 
 - **Events are pure data**; `engine::eligible_events` gates by day/morale/resources/role/upgrade/darkness and **story flags** (`requires_flags`/`forbids_flags`); `Effect::SetFlag`/`ClearFlag` drive multi-step arcs.
 - **Damage mitigation** is tag-driven (`engine::mitigate_damage`): `combat` softened by Blacksmith/skill/gear/armor-items/class; `disaster` halved by Infirmary; `demon` scaled up by darkness and softened by the Shrine.

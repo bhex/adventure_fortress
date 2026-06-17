@@ -221,6 +221,6 @@ fn continue_click(
     if !clicked {
         return;
     }
-    // The day continues — the clock runs finish_day at midnight.
+    // Returning to the fortress runs the day-end pipeline (settle_after_modal).
     next_state.set(AppState::FortressView);
 }

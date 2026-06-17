@@ -1257,7 +1257,12 @@ fn darkness_stays_in_bounds_and_fluctuates() {
 fn overrun_site_spikes_darkness_and_sends_refugees() {
     let mut gs = test_state();
     gs.region.darkness = 80;
-    gs.region.sites = vec![Site { name: "Vell".to_string(), kind: SiteKind::City, strength: 1 }];
+    gs.region.sites = vec![Site {
+        name: "Vell".to_string(),
+        kind: SiteKind::City,
+        strength: 1,
+        pos: fortress_core::Coord::new(10, 10),
+    }];
     let mut fell = false;
     for _ in 0..20 {
         let before = gs.region.darkness;
@@ -1274,6 +1279,111 @@ fn overrun_site_spikes_darkness_and_sends_refugees() {
         }
     }
     assert!(fell, "a strength-1 site at darkness 80 must fall within 20 days");
+}
+
+#[test]
+fn region_layout_is_deterministic_and_spread() {
+    // Same seed → identical map every run (positions are serialized state).
+    assert_eq!(GameState::new(7).region, GameState::new(7).region);
+
+    for seed in 1..=10 {
+        let region = GameState::new(seed).region;
+        assert!(!region.portals.is_empty(), "every region has demon portals");
+        for (i, s) in region.sites.iter().enumerate() {
+            assert!(
+                s.pos.x >= 2 && s.pos.x < REGION_W - 2 && s.pos.y >= 2 && s.pos.y < REGION_H - 2,
+                "site {} out of bounds: {:?}",
+                s.name,
+                s.pos
+            );
+            assert!(
+                FORTRESS_POS.dist(s.pos) >= 6,
+                "site {} crowds the fortress (seed {seed})",
+                s.name
+            );
+            for t in region.sites.iter().skip(i + 1) {
+                assert!(
+                    s.pos.dist(t.pos) >= 8,
+                    "{} and {} overlap (seed {seed})",
+                    s.name,
+                    t.name
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn expedition_days_scale_with_distance() {
+    let mut gs = test_state();
+    gs.region.sites = vec![
+        Site {
+            name: "Near".to_string(),
+            kind: SiteKind::City,
+            strength: 5,
+            pos: Coord::new(FORTRESS_POS.x + 7, FORTRESS_POS.y),
+        },
+        Site {
+            name: "Far".to_string(),
+            kind: SiteKind::City,
+            strength: 5,
+            pos: Coord::new(2, 2),
+        },
+    ];
+    let near = gs.region.expedition_days("Near");
+    let far = gs.region.expedition_days("Far");
+    assert!(far > near, "a distant hold is a longer march (far={far}, near={near})");
+    assert!((3..=12).contains(&near) && (3..=12).contains(&far), "days stay in band");
+}
+
+#[test]
+fn the_blight_reaches_only_exposed_ground() {
+    let mut gs = test_state();
+    gs.region.darkness = 80;
+    gs.region.portals = vec![Coord::new(2, 2)];
+    assert!(gs.region.in_blight(Coord::new(5, 5)), "ground by the portal is blighted");
+    assert!(
+        !gs.region.in_blight(Coord::new(REGION_W - 3, REGION_H - 3)),
+        "ground across the map is still free"
+    );
+    // and with no darkness, the blight has no reach at all
+    gs.region.darkness = 0;
+    assert!(!gs.region.in_blight(Coord::new(3, 3)));
+}
+
+#[test]
+fn the_dark_takes_portal_sites_first() {
+    let mut gs = test_state();
+    gs.region.darkness = 70;
+    gs.region.portals = vec![Coord::new(2, 2)];
+    // two equally sturdy cities — one hard by the portal, one far across.
+    gs.region.sites = vec![
+        Site {
+            name: "Exposed".to_string(),
+            kind: SiteKind::City,
+            strength: 8,
+            pos: Coord::new(4, 4),
+        },
+        Site {
+            name: "Sheltered".to_string(),
+            kind: SiteKind::City,
+            strength: 8,
+            pos: Coord::new(REGION_W - 4, REGION_H - 4),
+        },
+    ];
+    for _ in 0..6 {
+        gs.region.darkness = 70; // hold the pressure steady for the test
+        gs.region.tick(&mut gs.rng);
+    }
+    let exposed = gs.region.sites.iter().find(|s| s.name == "Exposed");
+    let sheltered = gs.region.sites.iter().find(|s| s.name == "Sheltered");
+    match (exposed, sheltered) {
+        (None, _) => {} // the exposed hold fell first — as it should
+        (Some(e), Some(s)) => {
+            assert!(e.strength < s.strength, "the exposed hold should be the more worn")
+        }
+        (Some(_), None) => panic!("the sheltered hold fell before the exposed one"),
+    }
 }
 
 #[test]

@@ -8,7 +8,7 @@ use fortress_core::{Building, Role, Upgrade};
 
 use crate::actors::{Actor, Glyph, GridPos};
 use crate::bridge::{Game, Selected, Selection};
-use crate::clock::{DayPhase, GameClock};
+use crate::clock::DayCycle;
 use crate::picking::Hovered;
 use crate::AppState;
 
@@ -254,31 +254,78 @@ fn rebuild_layout(game: Res<Game>, mut layout: ResMut<MapLayout>) {
     layout.housing_beds = housing_beds;
 }
 
-/// Daylight grading: warm at dawn/dusk, cold and dim at night.
-fn phase_tint(c: Color, phase: DayPhase) -> Color {
-    let s = c.to_srgba();
-    match phase {
-        DayPhase::Day => c,
-        DayPhase::Dawn => Color::srgb(s.red * 0.95, s.green * 0.85, s.blue * 0.75),
-        DayPhase::Dusk => Color::srgb(s.red * 0.9, s.green * 0.7, s.blue * 0.6),
-        DayPhase::Night => Color::srgb(s.red * 0.35, s.green * 0.4, s.blue * 0.55 + 0.05),
+/// The dawn gradient: the whole map lerps from a cold, dim night through a warm
+/// amber sunrise to full daylight as the day arrives. `p` is the sweep progress
+/// (0 = night, 1 = full day); the returned colour is a per-channel multiplier
+/// applied to every glyph, so morning visibly washes across the fortress.
+fn day_tint(p: f32) -> Vec3 {
+    let night = Vec3::new(0.32, 0.40, 0.62);
+    let warm = Vec3::new(1.08, 0.84, 0.60);
+    let day = Vec3::new(1.0, 1.0, 1.0);
+    // smoothstep for an eased rise
+    let ease = |t: f32| {
+        let t = t.clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    };
+    if p < 0.55 {
+        night.lerp(warm, ease(p / 0.55))
+    } else {
+        warm.lerp(day, ease((p - 0.55) / 0.45))
     }
 }
 
+/// Multiply a base colour by the day tint, channel by channel (clamped).
+fn tinted(base: Color, tint: Vec3) -> Color {
+    let s = base.to_srgba();
+    Color::srgb(
+        (s.red * tint.x).min(1.0),
+        (s.green * tint.y).min(1.0),
+        (s.blue * tint.z).min(1.0),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 fn redraw_terminal(
     mut terminals: Query<&mut Terminal>,
     layout: Res<MapLayout>,
-    clock: Res<GameClock>,
+    cycle: Res<DayCycle>,
     hovered: Res<Hovered>,
     selected: Res<Selected>,
-    actors: Query<(&Actor, &GridPos, &Glyph, &crate::actors::Wander)>,
+    actors: Query<(&Actor, &GridPos, &Glyph)>,
+    moved: Query<(), Changed<GridPos>>,
+    mut last_progress: Local<Option<f32>>,
 ) {
+    // Redrawing clears the terminal and rewrites every tile, forcing a mesh
+    // re-upload. Skip it when nothing on screen changed: the dawn sweep
+    // advancing (the gradient), an actor (re)placed, the layout growing, or the
+    // hover/selection moving are the only things that alter the picture. Once
+    // the day has fully arrived the tint is constant, so a settled fortress
+    // costs nothing to draw until the player touches it.
     let Ok(mut term) = terminals.single_mut() else {
         return;
     };
+    // The region view borrows the shared terminal and resizes it; restore the
+    // fortress dimensions (and force a redraw) when we come back.
+    let resized = term.size() != UVec2::new(crate::MAP_W as u32, crate::MAP_H as u32);
+    if resized {
+        term.resize([crate::MAP_W, crate::MAP_H]);
+    }
+
+    let progress = cycle.sweep_progress();
+    let needs_redraw = resized
+        || last_progress.is_none_or(|lp| lp != progress)
+        || layout.is_changed()
+        || hovered.is_changed()
+        || selected.is_changed()
+        || !moved.is_empty();
+    if !needs_redraw {
+        return;
+    }
+    *last_progress = Some(progress);
+
     term.clear();
 
-    let phase = clock.phase();
+    let tint = day_tint(progress);
     let ground = Color::srgb(0.18, 0.16, 0.12);
     for x in 0..crate::MAP_W as i32 {
         for y in 0..crate::MAP_H as i32 {
@@ -296,15 +343,13 @@ fn redraw_terminal(
                     }
                 }
             };
-            term.put_char([x as usize, y as usize], ch).fg(phase_tint(fg, phase));
+            term.put_char([x as usize, y as usize], ch).fg(tinted(fg, tint));
         }
     }
 
-    for (_, pos, glyph, wander) in actors.iter() {
-        // 'z' only for those actually bedded down — walkers keep their glyph.
-        let ch = if wander.asleep { 'z' } else { glyph.ch };
-        term.put_char([pos.0.x as usize, pos.0.y as usize], ch)
-            .fg(phase_tint(glyph.color, phase));
+    for (_, pos, glyph) in actors.iter() {
+        term.put_char([pos.0.x as usize, pos.0.y as usize], glyph.ch)
+            .fg(tinted(glyph.color, tint));
     }
 
     // hover + selection highlight via background tint
@@ -313,7 +358,7 @@ fn redraw_terminal(
         highlights.push((p, Color::srgb(0.25, 0.25, 0.35)));
     }
     if let Some(Selection::Inhabitant(name)) = &selected.0 {
-        for (actor, pos, _, _) in actors.iter() {
+        for (actor, pos, _) in actors.iter() {
             if &actor.name == name {
                 highlights.push((pos.0, Color::srgb(0.2, 0.35, 0.2)));
             }

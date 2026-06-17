@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use fortress_core::{Role, Upgrade};
 
 use crate::bridge::{AutoMode, Game, GameLog, Selected, Selection};
-use crate::clock::{ClockSpeed, DayPhase, GameClock};
+use crate::clock::DayCycle;
 use crate::AppState;
 
 pub struct HudPlugin;
@@ -18,10 +18,9 @@ impl Plugin for HudPlugin {
                 Update,
                 (
                     update_hud_text,
-                    update_clock_text,
                     update_log,
                     update_inspect,
-                    speed_buttons,
+                    next_day_button,
                     build_hud_button,
                     region_hud_button,
                     auto_hud_button,
@@ -99,15 +98,7 @@ struct LogLine;
 struct InspectText;
 
 #[derive(Component)]
-struct ClockText;
-
-#[derive(Component, Clone, Copy)]
-enum SpeedButton {
-    Pause,
-    Normal,
-    Fast,
-    SkipToDawn,
-}
+struct NextDayButton;
 
 #[derive(Component)]
 struct BuildHudButton;
@@ -192,30 +183,22 @@ fn spawn_hud(mut commands: Commands) {
                         .with_children(|b| {
                             b.spawn(text("auto (A)", 14.0, Color::WHITE));
                         });
-                    cluster.spawn((ClockText, text("", 16.0, ACCENT)));
-                    for (which, label) in [
-                        (SpeedButton::Pause, "||"),
-                        (SpeedButton::Normal, ">"),
-                        (SpeedButton::Fast, ">>"),
-                        (SpeedButton::SkipToDawn, "dawn"),
-                    ] {
-                        cluster
-                            .spawn((
-                                which,
-                                Button,
-                                Node {
-                                    padding: UiRect::axes(Val::Px(8.0), Val::Px(5.0)),
-                                    margin: UiRect::all(Val::Px(2.0)),
-                                    justify_content: JustifyContent::Center,
-                                    align_items: AlignItems::Center,
-                                    ..Default::default()
-                                },
-                                BackgroundColor(BTN_BG),
-                            ))
-                            .with_children(|b| {
-                                b.spawn(text(label, 14.0, Color::WHITE));
-                            });
-                    }
+                    cluster
+                        .spawn((
+                            NextDayButton,
+                            Button,
+                            Node {
+                                padding: UiRect::axes(Val::Px(10.0), Val::Px(5.0)),
+                                margin: UiRect::all(Val::Px(2.0)),
+                                justify_content: JustifyContent::Center,
+                                align_items: AlignItems::Center,
+                                ..Default::default()
+                            },
+                            BackgroundColor(ACCENT.with_alpha(0.9)),
+                        ))
+                        .with_children(|b| {
+                            b.spawn(text("next day (space) »", 14.0, Color::BLACK));
+                        });
                 });
         });
 
@@ -261,7 +244,14 @@ fn update_hud_text(
     game: Res<Game>,
     auto: Res<AutoMode>,
     mut query: Query<&mut Text, With<HudText>>,
+    fresh: Query<(), Added<HudText>>,
 ) {
+    // Game state changes only a handful of times per in-game day; skip the
+    // string rebuild on the ~60 idle frames between. `fresh` re-runs once after
+    // the HUD is (re)spawned on entry so it populates immediately.
+    if !game.is_changed() && !auto.is_changed() && fresh.is_empty() {
+        return;
+    }
     let Ok(mut t) = query.single_mut() else { return };
     let gs = &game.0;
     // hybrid: exact number + band word, e.g. "food 34 (adequate)"
@@ -440,7 +430,13 @@ fn update_inspect(
     game: Res<Game>,
     selected: Res<Selected>,
     mut query: Query<&mut Text, With<InspectText>>,
+    fresh: Query<(), Added<InspectText>>,
 ) {
+    // The inspect panel is the heaviest text rebuild (skill bars, armory roll
+    // call, …); only rebuild when the state or the selection moves.
+    if !game.is_changed() && !selected.is_changed() && fresh.is_empty() {
+        return;
+    }
     let Ok(mut t) = query.single_mut() else { return };
     **t = match &selected.0 {
         None => {
@@ -577,23 +573,18 @@ fn update_inspect(
 }
 
 // ---------------------------------------------------------------------------
-// Clock display + speed controls
+// Day advance
 // ---------------------------------------------------------------------------
 
-fn update_clock_text(clock: Res<GameClock>, mut query: Query<&mut Text, With<ClockText>>) {
-    let Ok(mut t) = query.single_mut() else { return };
-    let phase = match clock.phase() {
-        DayPhase::Dawn => "dawn",
-        DayPhase::Day => "day",
-        DayPhase::Dusk => "dusk",
-        DayPhase::Night => "night",
-    };
-    let speed = match clock.speed {
-        ClockSpeed::Paused => " [PAUSED]",
-        ClockSpeed::Normal => "",
-        ClockSpeed::Fast => " [x3]",
-    };
-    **t = format!("{} ({phase}){speed}  ", clock.readout());
+/// The HUD "next day" button — the click counterpart to the Space/N hotkeys.
+/// Advancing is a no-op unless the current day has settled.
+fn next_day_button(
+    interactions: Query<&Interaction, (Changed<Interaction>, With<NextDayButton>)>,
+    mut cycle: ResMut<DayCycle>,
+) {
+    if interactions.iter().any(|i| *i == Interaction::Pressed) {
+        cycle.request_next_day();
+    }
 }
 
 fn build_hud_button(
@@ -629,19 +620,3 @@ fn auto_hud_button(
     }
 }
 
-fn speed_buttons(
-    interactions: Query<(&Interaction, &SpeedButton), Changed<Interaction>>,
-    mut clock: ResMut<GameClock>,
-) {
-    for (interaction, button) in interactions.iter() {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        match button {
-            SpeedButton::Pause => clock.speed = ClockSpeed::Paused,
-            SpeedButton::Normal => clock.speed = ClockSpeed::Normal,
-            SpeedButton::Fast => clock.speed = ClockSpeed::Fast,
-            SpeedButton::SkipToDawn => clock.skip_to_dawn(),
-        }
-    }
-}
