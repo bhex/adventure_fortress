@@ -19,10 +19,10 @@ impl Plugin for PickingPlugin {
     }
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource, Default, PartialEq)]
 pub struct Hovered(pub Option<IVec2>);
 
-fn cursor_tile(
+pub fn cursor_tile(
     windows: &Query<&Window>,
     camera: &Query<(&Camera, &GlobalTransform), With<TerminalCamera>>,
     terminal: &Query<&TerminalTransform>,
@@ -41,7 +41,10 @@ fn update_hover(
     terminal: Query<&TerminalTransform>,
     mut hovered: ResMut<Hovered>,
 ) {
-    hovered.0 = cursor_tile(&windows, &camera, &terminal);
+    // Only write when the tile under the cursor actually changes, so the
+    // resource's change-detection flag stays quiet on idle frames (the map
+    // redraw watches it).
+    hovered.set_if_neq(Hovered(cursor_tile(&windows, &camera, &terminal)));
 }
 
 fn click_select(

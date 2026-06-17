@@ -7,6 +7,7 @@ mod gameover;
 mod map;
 mod modal;
 mod picking;
+mod region_map;
 mod region_panel;
 mod roster;
 mod title;

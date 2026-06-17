@@ -269,6 +269,12 @@ fn refresh_rows(
     roots: Query<Entity, With<RosterRoot>>,
     rows: Query<Entity, With<RosterRow>>,
 ) {
+    // `snapshot` allocates a full census (formatted strings per soul); only pay
+    // for it when the state or the sort/filter actually moved. The cache reset
+    // in `spawn_panel` (rows emptied) forces the first build on entry.
+    if !game.is_changed() && !controls.is_changed() && !cache.0.rows.is_empty() {
+        return;
+    }
     let current = snapshot(&game, &controls);
     if cache.0 == current {
         return;

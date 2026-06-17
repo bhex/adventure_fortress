@@ -10,6 +10,78 @@ use serde::{Deserialize, Serialize};
 
 use crate::rng::GameRng;
 
+/// The logical region grid. Sites, portals and the fortress live on these
+/// coordinates; the UI renders a terminal of the same dimensions. The fortress
+/// sits at the centre as the map's focal point.
+pub const REGION_W: i16 = 64;
+pub const REGION_H: i16 = 40;
+pub const FORTRESS_POS: Coord = Coord { x: REGION_W / 2, y: REGION_H / 2 };
+
+/// How far a portal's blight can reach at full darkness, in tiles.
+const BLIGHT_MAX_REACH: i32 = 22;
+
+/// A point on the region grid. Plain data — core carries no glam/Bevy dep.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Coord {
+    pub x: i16,
+    pub y: i16,
+}
+
+impl Coord {
+    pub fn new(x: i16, y: i16) -> Coord {
+        Coord { x, y }
+    }
+
+    /// Euclidean distance, rounded to whole tiles.
+    pub fn dist(self, other: Coord) -> i32 {
+        let dx = (self.x - other.x) as f64;
+        let dy = (self.y - other.y) as f64;
+        (dx * dx + dy * dy).sqrt().round() as i32
+    }
+}
+
+/// Nearest portal distance to a point; a large sentinel when there are none.
+fn nearest_dist(portals: &[Coord], pos: Coord) -> i32 {
+    portals.iter().map(|p| p.dist(pos)).min().unwrap_or(i32::MAX / 2)
+}
+
+/// Deterministically place a point that clears the fortress and existing points
+/// by the given margins, sampling against the run rng (capped retries).
+fn place_clear(rng: &mut GameRng, taken: &[Coord], from_fortress: i32, from_others: i32) -> Coord {
+    let mut last = FORTRESS_POS;
+    for _ in 0..128 {
+        let c = Coord::new(
+            rng.random_range(2..REGION_W - 2),
+            rng.random_range(2..REGION_H - 2),
+        );
+        last = c;
+        if c.dist(FORTRESS_POS) >= from_fortress
+            && taken.iter().all(|t| c.dist(*t) >= from_others)
+        {
+            return c;
+        }
+    }
+    last // give up gracefully after retries — still deterministic
+}
+
+/// A point on (or near) the map edge for a portal, spread from existing portals.
+fn edge_point(rng: &mut GameRng, taken: &[Coord]) -> Coord {
+    let mut last = Coord::new(1, 1);
+    for _ in 0..32 {
+        let c = match rng.random_range(0..4) {
+            0 => Coord::new(rng.random_range(1..REGION_W - 1), 1),
+            1 => Coord::new(rng.random_range(1..REGION_W - 1), REGION_H - 2),
+            2 => Coord::new(1, rng.random_range(1..REGION_H - 1)),
+            _ => Coord::new(REGION_W - 2, rng.random_range(1..REGION_H - 1)),
+        };
+        last = c;
+        if taken.iter().all(|t| c.dist(*t) >= 14) {
+            return c;
+        }
+    }
+    last
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SiteKind {
@@ -39,6 +111,9 @@ pub struct Site {
     pub name: String,
     pub kind: SiteKind,
     pub strength: i32,
+    /// Where the site sits on the region grid (the map's focal layout).
+    #[serde(default)]
+    pub pos: Coord,
 }
 
 impl Site {
@@ -100,6 +175,10 @@ pub struct Region {
     pub sites: Vec<Site>,
     /// Days of inbound refugees still owed from fallen sites.
     pub refugee_wave_days: u32,
+    /// Demon portals on the map edges — the darkness emanates from these, and
+    /// sites nearest a portal fall first.
+    #[serde(default)]
+    pub portals: Vec<Coord>,
 }
 
 impl Region {
@@ -132,13 +211,24 @@ impl Region {
                 SiteKind::MercCompany => rng.random_range(5..=9),
                 SiteKind::AdventurerBand | SiteKind::Survivors => rng.random_range(4..=7),
             };
-            sites.push(Site { name, kind, strength });
+            // place it clear of the fortress and the other holds
+            let taken: Vec<Coord> = sites.iter().map(|s: &Site| s.pos).collect();
+            let pos = place_clear(rng, &taken, 6, 8);
+            sites.push(Site { name, kind, strength, pos });
         }
+
+        // demon portals brood on the edges; the darkness leaks from them
+        let mut portals = Vec::new();
+        for _ in 0..rng.random_range(2..=4) {
+            portals.push(edge_point(rng, &portals));
+        }
+
         Region {
             darkness: rng.random_range(5..=15),
             portal_pressure: 2,
             sites,
             refugee_wave_days: 0,
+            portals,
         }
     }
 
@@ -165,6 +255,53 @@ impl Region {
         self.refugee_wave_days > 0
     }
 
+    /// Distance from a point to the nearest portal (large sentinel if none).
+    pub fn nearest_portal_dist(&self, pos: Coord) -> i32 {
+        nearest_dist(&self.portals, pos)
+    }
+
+    /// How far the blight reaches from each portal, scaling with darkness.
+    pub fn blight_radius(&self) -> i32 {
+        self.darkness * BLIGHT_MAX_REACH / 100
+    }
+
+    /// Whether a point lies within the blight (a portal's darkened reach).
+    pub fn in_blight(&self, pos: Coord) -> bool {
+        let reach = self.blight_radius();
+        reach > 0 && self.nearest_portal_dist(pos) <= reach
+    }
+
+    /// Days for an expedition to reach a site and back — scales with distance.
+    pub fn expedition_days(&self, site_name: &str) -> i32 {
+        match self.sites.iter().find(|s| s.name == site_name) {
+            Some(site) => (2 + FORTRESS_POS.dist(site.pos) / 7).clamp(3, 12),
+            None => 5,
+        }
+    }
+
+    /// Pick a site to grind, biased toward those nearest a portal — the dark
+    /// closes on the exposed first. Falls back to uniform when there are no
+    /// portals. rng-driven and deterministic.
+    fn weighted_strike_idx(&self, rng: &mut GameRng) -> usize {
+        if self.portals.is_empty() {
+            return rng.random_range(0..self.sites.len());
+        }
+        let weights: Vec<i32> = self
+            .sites
+            .iter()
+            .map(|s| 4 + (BLIGHT_MAX_REACH - self.nearest_portal_dist(s.pos)).max(0) / 6)
+            .collect();
+        let total: i32 = weights.iter().sum();
+        let mut roll = rng.random_range(0..total);
+        for (i, w) in weights.iter().enumerate() {
+            roll -= w;
+            if roll < 0 {
+                return i;
+            }
+        }
+        self.sites.len() - 1
+    }
+
     /// One day in the wider war. Returns log lines worth telling the player.
     pub fn tick(&mut self, rng: &mut GameRng) -> Vec<String> {
         let mut lines = Vec::new();
@@ -187,10 +324,12 @@ impl Region {
         if self.sites.is_empty() {
             if self.darkness < 80 && rng.random_range(0..100) < 6 {
                 let name = SURVIVOR_NAMES[rng.random_range(0..SURVIVOR_NAMES.len())].to_string();
+                let pos = place_clear(rng, &[], 6, 8);
                 self.sites.push(Site {
                     name: name.clone(),
                     kind: SiteKind::Survivors,
                     strength: rng.random_range(3..=5),
+                    pos,
                 });
                 lines.push(format!(
                     "Out of the ruin, survivors gather at {name} and begin to rebuild."
@@ -211,17 +350,25 @@ impl Region {
             }
         }
 
-        // High darkness grinds the sites down.
+        // High darkness grinds the sites down — geography decides who first.
+        // The total grind matches the old uniform model (balance-neutral); only
+        // the *target* is biased, so the holds nearest a portal fall first.
         if self.darkness >= 50 && !self.sites.is_empty() {
             let strikes = if self.darkness >= 75 { 2 } else { 1 };
             for _ in 0..strikes {
                 if self.sites.is_empty() {
                     break;
                 }
-                let idx = rng.random_range(0..self.sites.len());
+                let idx = self.weighted_strike_idx(rng);
                 self.sites[idx].strength -= rng.random_range(1..=3);
-                if self.sites[idx].strength <= 0 {
-                    let fallen = self.sites.remove(idx);
+            }
+
+            // Removal sweep: any hold ground to nothing falls, and the dark
+            // surges where it broke through.
+            let mut i = 0;
+            while i < self.sites.len() {
+                if self.sites[i].strength <= 0 {
+                    let fallen = self.sites.remove(i);
                     self.darkness = (self.darkness + 10).min(100);
                     self.refugee_wave_days += rng.random_range(1..=2);
                     lines.push(format!(
@@ -229,6 +376,8 @@ impl Region {
                         fallen.kind.name(),
                         fallen.name
                     ));
+                } else {
+                    i += 1;
                 }
             }
         }
