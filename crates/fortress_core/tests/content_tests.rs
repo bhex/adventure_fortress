@@ -208,7 +208,7 @@ fn an_auto_run_survives_well_past_the_turning_seasons() {
         let day = gs.fortress.day;
         // a hold left to itself raises the next building it needs
         if let Some(upgrade) = gs.auto_build_pick() {
-            let _ = gs.construct(upgrade);
+            let _ = gs.queue_build(upgrade);
         }
         if let Some(event) = roll(&deck, day, &mut gs, last.as_deref()).cloned() {
             last = Some(event.name.clone());

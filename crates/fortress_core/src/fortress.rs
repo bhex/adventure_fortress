@@ -282,18 +282,19 @@ impl FortressFeature {
     }
 }
 
-/// A build or upgrade underway: materials already paid, labor still owed.
+/// A build or upgrade in the build queue. Orders are worked strictly in queue
+/// order: only the front project draws labor, and only once `funded`. An
+/// unfunded project owes `materials_owed` — paid in full the first day it sits
+/// at the front and the hold can afford it (see `GameState::try_fund_front`).
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BuildProject {
     pub upgrade: Upgrade,
     pub target_level: u8,
     pub worker_days_remaining: i32,
-    /// A *pledged* project: ground promised but the materials not yet to hand.
-    /// It holds its place in the queue and draws no labor until the hold can
-    /// finally afford `materials_owed` (paid in full, in one day — see
-    /// `GameState::pay_pledged_projects`), at which point it becomes ordinary.
+    /// Materials paid: until then the order draws no labor, only waits its turn.
     #[serde(default)]
-    pub pledged: bool,
+    pub funded: bool,
+    /// What the order still owes the stores before work can begin.
     #[serde(default)]
     pub materials_owed: ResourceDelta,
 }
@@ -374,44 +375,52 @@ impl Fortress {
         self.projects.iter().any(|p| p.upgrade == kind)
     }
 
-    /// Enqueue a build/upgrade — its materials are paid by the caller; what's
-    /// owed now is labor (`worker_days`).
-    pub fn enqueue_project(&mut self, kind: Upgrade, target_level: u8) {
+    /// Add a build/upgrade to the back of the queue, owing `cost` in materials.
+    /// Nothing is paid now — the order is funded the first day it reaches the
+    /// front and the hold can afford it (see `GameState::try_fund_front`).
+    pub fn enqueue_project(&mut self, kind: Upgrade, target_level: u8, cost: ResourceDelta) {
         self.projects.push(BuildProject {
             upgrade: kind,
             target_level,
             worker_days_remaining: kind.build_worker_days(target_level),
-            pledged: false,
-            materials_owed: ResourceDelta::default(),
-        });
-    }
-
-    /// Promise a build the hold can't yet pay for: it joins the queue but draws
-    /// no labor until its `materials_owed` is met (see `pay_pledged_projects`).
-    pub fn pledge_project(&mut self, kind: Upgrade, target_level: u8, cost: ResourceDelta) {
-        self.projects.push(BuildProject {
-            upgrade: kind,
-            target_level,
-            worker_days_remaining: kind.build_worker_days(target_level),
-            pledged: true,
+            funded: false,
             materials_owed: cost,
         });
     }
 
-    /// Put a day's `workforce` into the first *funded* project. Returns the
-    /// upgrades that completed today (usually none or one), to be applied by the
-    /// caller. Pledged projects are skipped — they draw no labor until paid.
+    /// Put a day's `workforce` into the front project, but only if it's funded.
+    /// Returns the upgrades that completed today (usually none or one), to be
+    /// applied by the caller. Strict FIFO: nothing behind the front advances.
     pub fn advance_projects(&mut self, workforce: i32) -> Vec<Upgrade> {
         let mut done = Vec::new();
-        if let Some(idx) = self.projects.iter().position(|p| !p.pledged) {
-            let project = &mut self.projects[idx];
-            project.worker_days_remaining -= workforce.max(1);
-            if project.worker_days_remaining <= 0 {
-                done.push(project.upgrade);
-                self.projects.remove(idx);
+        if let Some(front) = self.projects.first() {
+            if front.funded {
+                let project = &mut self.projects[0];
+                project.worker_days_remaining -= workforce.max(1);
+                if project.worker_days_remaining <= 0 {
+                    done.push(project.upgrade);
+                    self.projects.remove(0);
+                }
             }
         }
         done
+    }
+
+    /// Move the queued project at `idx` one place toward the front (`up`) or the
+    /// back. Returns whether it moved (it can't past either end).
+    pub fn move_project(&mut self, idx: usize, up: bool) -> bool {
+        if up {
+            if idx == 0 || idx >= self.projects.len() {
+                return false;
+            }
+            self.projects.swap(idx, idx - 1);
+        } else {
+            if idx + 1 >= self.projects.len() {
+                return false;
+            }
+            self.projects.swap(idx, idx + 1);
+        }
+        true
     }
 
     /// Grow to the next settlement tier when the hold is crowded *and* built up

@@ -52,7 +52,7 @@ fn run(deck: &[Event], seed: u64, max_days: u32, verbose: bool) -> Outcome {
 
         // Dawn: a hold left to itself raises the next building it needs.
         if let Some(upgrade) = gs.auto_build_pick() {
-            if let Ok(line) = gs.construct(upgrade) {
+            if let Ok(line) = gs.queue_build(upgrade) {
                 if verbose {
                     println!("Day {day}: {line}");
                 }

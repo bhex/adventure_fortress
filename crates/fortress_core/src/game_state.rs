@@ -16,7 +16,7 @@ use crate::rng::GameRng;
 use crate::skills::Skill;
 use crate::world::World;
 
-pub const SAVE_VERSION: u32 = 16;
+pub const SAVE_VERSION: u32 = 17;
 
 /// Events resolved per commander level. Every threshold crossed triggers an ability draft.
 
@@ -334,68 +334,72 @@ impl GameState {
         BuildAvailability::Ok
     }
 
-    /// Pay the materials and break ground: the build is enqueued and the
-    /// workforce raises it over the following days. Errs with the blocker.
-    pub fn construct(&mut self, upgrade: Upgrade) -> Result<String, BuildAvailability> {
+    /// Add a build/upgrade to the back of the build queue. Materials aren't paid
+    /// now — an order is funded the day it reaches the front and the hold can
+    /// afford it (see `try_fund_front`), then the workforce raises it.
+    /// Anything otherwise buildable can be queued, affordable today or not; errs
+    /// only on the hard blockers (max level, a missing specialist, an order of
+    /// this kind already in the queue).
+    pub fn queue_build(&mut self, upgrade: Upgrade) -> Result<String, BuildAvailability> {
         match self.build_availability(upgrade) {
-            BuildAvailability::Ok => {
+            BuildAvailability::Ok | BuildAvailability::CantAfford => {
                 let level = self.fortress.next_build_level(upgrade).unwrap_or(1);
-                self.resources.apply_delta(&upgrade.build_cost(level).negated());
-                self.fortress.enqueue_project(upgrade, level);
+                self.fortress
+                    .enqueue_project(upgrade, level, upgrade.build_cost(level));
+                let pos = self.fortress.projects.len();
+                // If the new order lands at the front and the hold can pay, break
+                // ground at once; otherwise it waits its turn (and its materials).
+                if pos == 1 {
+                    if let Some(line) = self.try_fund_front() {
+                        return Ok(line);
+                    }
+                }
                 Ok(format!(
-                    "Work begins on the {} — {} worker-days of labor ahead.",
+                    "The {} joins the build queue (#{}).",
                     upgrade.name(),
-                    upgrade.build_worker_days(level)
+                    pos
                 ))
             }
             blocked => Err(blocked),
         }
     }
 
-    /// Promise a build the hold can't yet pay for. Only valid when the *sole*
-    /// blocker is the cost (the building is otherwise buildable, the role on
-    /// hand, nothing of its kind already underway). The project joins the queue
-    /// pledged, and `pay_pledged_projects` funds it the day the hold can afford
-    /// it. Errs with the real blocker when a pledge isn't the answer.
-    pub fn pledge(&mut self, upgrade: Upgrade) -> Result<String, BuildAvailability> {
-        match self.build_availability(upgrade) {
-            BuildAvailability::CantAfford => {
-                let level = self.fortress.next_build_level(upgrade).unwrap_or(1);
-                self.fortress.pledge_project(upgrade, level, upgrade.build_cost(level));
-                Ok(format!(
-                    "You pledge to raise the {} — work waits on the materials.",
-                    upgrade.name()
-                ))
-            }
-            // Already affordable? Just build it. Otherwise surface the blocker.
-            BuildAvailability::Ok => self.construct(upgrade),
-            blocked => Err(blocked),
+    /// Strike the queued order at `idx` from the build queue. A funded order has
+    /// already drawn its materials from the stores, so they're handed back; an
+    /// unfunded one paid nothing and so refunds nothing. Returns a log line.
+    pub fn cancel_build(&mut self, idx: usize) -> Option<String> {
+        if idx >= self.fortress.projects.len() {
+            return None;
         }
+        let project = self.fortress.projects.remove(idx);
+        if project.funded {
+            self.resources
+                .apply_delta(&project.upgrade.build_cost(project.target_level));
+        }
+        Some(format!(
+            "The {} is struck from the build queue.",
+            project.upgrade.name()
+        ))
     }
 
-    /// Fund any pledged projects the hold can now afford (paid in full, in queue
-    /// order, one per day so a windfall doesn't clear the whole backlog at once).
-    /// A funded pledge becomes an ordinary project and starts drawing labor.
-    fn pay_pledged_projects(&mut self, lines: &mut Vec<String>) {
-        if let Some(idx) = self.projects_first_affordable_pledge() {
-            let owed = self.fortress.projects[idx].materials_owed;
-            self.resources.apply_delta(&owed.negated());
-            let project = &mut self.fortress.projects[idx];
-            project.pledged = false;
-            project.materials_owed = ResourceDelta::default();
-            lines.push(format!(
-                "The pledged {} is funded at last — work begins.",
-                project.upgrade.name()
-            ));
+    /// Strict-FIFO funding: if the front order is unfunded and the hold can
+    /// afford it, pay its materials in full so labor can begin. Returns a log
+    /// line when it funds. Only the front of the queue is ever funded — nothing
+    /// behind it jumps the line.
+    fn try_fund_front(&mut self) -> Option<String> {
+        let front = self.fortress.projects.first()?;
+        if front.funded || !self.resources.can_afford(&front.materials_owed) {
+            return None;
         }
-    }
-
-    /// The first pledged project the hold can pay for outright, if any.
-    fn projects_first_affordable_pledge(&self) -> Option<usize> {
-        self.fortress
-            .projects
-            .iter()
-            .position(|p| p.pledged && self.resources.can_afford(&p.materials_owed))
+        let owed = front.materials_owed;
+        self.resources.apply_delta(&owed.negated());
+        let project = &mut self.fortress.projects[0];
+        project.funded = true;
+        project.materials_owed = ResourceDelta::default();
+        Some(format!(
+            "Materials gathered — work begins on the {}.",
+            project.upgrade.name()
+        ))
     }
 
     /// Progress-Quest construction: the next building a hold left to its own
@@ -515,8 +519,11 @@ impl GameState {
             }
         }
 
-        // Honor pledges the hold can now afford, then put the day's labor in.
-        self.pay_pledged_projects(&mut lines);
+        // Fund the front of the build queue if the hold can now afford it, then
+        // put the day's labor in.
+        if let Some(line) = self.try_fund_front() {
+            lines.push(line);
+        }
 
         // Construction underway: the hold's laborers raise the front project a
         // day's worth; finished works apply their bonuses (no second payment).
@@ -707,19 +714,45 @@ impl GameState {
             }
         }
 
-        // The Lumberyard works the woods.
-        let yard_wood = match self.fortress.building_level(Upgrade::Lumberyard) {
-            0 => 0,
-            1 => 2,
-            2 => 3,
-            _ => 5,
+        // Wild foraging: with no proper building for a staple, the hold's
+        // laborers (peasants and miners) work the land for it — gathering wood
+        // from the forest, stone from the field, food from the wild. It's
+        // slower than a real Lumberyard/Mine/Farm, and the deeper the darkness
+        // the less safe it is to range beyond the walls, so the yield falls off
+        // sharply. Once the building stands, its steadier yield takes over and
+        // foraging for that staple stops.
+        let forage_pct: i64 = match self.region.band() {
+            DarknessBand::Quiet => 100,
+            DarknessBand::Gathering => 75,
+            DarknessBand::Deep => 40,
+            DarknessBand::Overwhelming => 15,
         };
-        if yard_wood > 0 {
+        let laborers = (self.inhabitants.get_by_role(Role::Peasant).len()
+            + self.inhabitants.get_by_role(Role::Miner).len()) as i64;
+        // Raw yield, darkened by danger. Capped so a built yard/mine is always
+        // the clear upgrade (darkness-proof and tier-scaling besides).
+        let forage = |raw: i64, cap: i64| (raw.min(cap)) * forage_pct / 100;
+
+        // The Lumberyard works the woods; lacking one, the hold forages timber.
+        let lumber_level = self.fortress.building_level(Upgrade::Lumberyard);
+        if lumber_level > 0 {
+            let yard_wood = match lumber_level {
+                1 => 2,
+                2 => 3,
+                _ => 5,
+            };
             self.resources.apply_delta(&ResourceDelta { wood: yard_wood, ..Default::default() });
+        } else {
+            let wood = forage((laborers + 1) / 2, 4);
+            if wood > 0 {
+                self.resources.apply_delta(&ResourceDelta { wood, ..Default::default() });
+            }
         }
 
         // The Mine answers the one shortage you can't trade away: stone — and
         // raw ore, the feedstock the forge turns into proper arms and armor.
+        // Lacking a Mine, the hold gathers loose stone from the field — but no
+        // ore, which only a worked seam gives up.
         let mine_level = self.fortress.building_level(Upgrade::Mine);
         if mine_level > 0 {
             // Miners draw far more from the seam than peasants filling in: each
@@ -728,6 +761,11 @@ impl GameState {
             let stone = [0, 3, 5, 8][mine_level.min(3) as usize] + miners;
             let ore = [0, 2, 3, 5][mine_level.min(3) as usize] + miners / 2;
             self.resources.apply_delta(&ResourceDelta { stone, ore, ..Default::default() });
+        } else {
+            let stone = forage((laborers + 1) / 2, 3);
+            if stone > 0 {
+                self.resources.apply_delta(&ResourceDelta { stone, ..Default::default() });
+            }
         }
 
         // The forge works ore into real equipment, keeps the armory in trim,
@@ -798,6 +836,17 @@ impl GameState {
             } else {
                 "The farm brings in the harvest.".to_string()
             });
+        } else {
+            // No Farm: the hold hunts and gathers. Farmers know the land best,
+            // and the laborers lend their hands — but it's lean work, and grows
+            // perilous as the dark closes in (see the forage falloff above).
+            let farmers = self.inhabitants.get_by_role(Role::Farmer).len() as i64;
+            // Farmers know the land best; the laborers lend their hands too.
+            let food = forage(2 * farmers + laborers, 8);
+            if food > 0 {
+                self.resources.apply_delta(&ResourceDelta { food, ..Default::default() });
+                lines.push("The hold forages the wild for food.".to_string());
+            }
         }
 
         // Spoilage: grain rots beyond what the stores can keep dry — the

@@ -12,10 +12,22 @@ fn guard(name: &str) -> Inhabitant {
     Inhabitant::new(name, Role::Guard)
 }
 
-/// Drive every queued build straight to completion (materials already paid by
-/// `construct`), isolating construction from the rest of the daily tick.
+/// Drive the build queue straight to completion, isolating construction from
+/// the rest of the daily tick. Funds the front order from the stores (mirroring
+/// `fund_front_project`) before laboring it, and stops if it can't be paid.
 fn finish_projects(gs: &mut GameState) {
     loop {
+        if let Some(front) = gs.fortress.projects.first() {
+            if !front.funded {
+                let owed = front.materials_owed;
+                if !gs.resources.can_afford(&owed) {
+                    break;
+                }
+                gs.resources.apply_delta(&owed.negated());
+                gs.fortress.projects[0].funded = true;
+                gs.fortress.projects[0].materials_owed = ResourceDelta::default();
+            }
+        }
         let done = gs.fortress.advance_projects(1000);
         if done.is_empty() {
             break;
@@ -379,31 +391,131 @@ fn deep_famine_raises_the_crisis_flag() {
 }
 
 #[test]
-fn a_pledged_build_waits_for_materials_then_funds_itself() {
+fn wild_foraging_sustains_a_hold_without_the_buildings() {
+    let mut gs = test_state();
+    gs.region.darkness = 0; // quiet: the wild is safe to work
+    gs.resources = Resources::default(); // bare stores, no Lumberyard/Mine/Farm
+    gs.inhabitants.add(Inhabitant::new("P1", Role::Peasant));
+    gs.inhabitants.add(Inhabitant::new("P2", Role::Peasant));
+    gs.inhabitants.add(Inhabitant::new("M1", Role::Miner));
+    gs.inhabitants.add(Inhabitant::new("F1", Role::Farmer));
+    gs.apply_daily_effects();
+    assert!(gs.resources.wood > 0, "laborers forage timber");
+    assert!(gs.resources.stone > 0, "laborers gather loose stone");
+    assert_eq!(gs.resources.ore, 0, "but ore only comes from a worked seam");
+    assert!(gs.resources.food > 0, "the hold hunts and gathers to feed itself");
+}
+
+#[test]
+fn a_hold_of_idle_specialists_forages_nothing() {
+    let mut gs = test_state();
+    gs.region.darkness = 0;
+    gs.resources = Resources::default();
+    gs.resources.food = 10;
+    // guards and a healer — no peasants, miners, or farmers to work the land
+    gs.inhabitants.add(guard("G"));
+    gs.inhabitants.add(Inhabitant::new("H", Role::Healer));
+    gs.apply_daily_effects();
+    assert_eq!(gs.resources.wood, 0, "no laborers, no timber");
+    assert_eq!(gs.resources.stone, 0, "no laborers, no stone");
+}
+
+#[test]
+fn the_dark_chokes_wild_foraging() {
+    let forage_food = |darkness: i32| {
+        let mut gs = test_state();
+        gs.region.darkness = darkness;
+        gs.resources = Resources::default();
+        for n in 0..4 {
+            gs.inhabitants.add(Inhabitant::new(&format!("P{n}"), Role::Peasant));
+        }
+        gs.apply_daily_effects();
+        gs.resources.food
+    };
+    // a quiet land feeds the hold; an overwhelmed one yields next to nothing
+    assert!(forage_food(0) > forage_food(100), "rising darkness chokes the wild");
+}
+
+#[test]
+fn a_queued_build_waits_for_materials_then_funds_itself() {
     let mut gs = test_state();
     // Strip the hold bare so the Watchtower is unaffordable.
     gs.resources = Resources::default();
     gs.resources.food = 50;
     assert_eq!(gs.build_availability(Upgrade::Watchtower), BuildAvailability::CantAfford);
 
-    // Promise it: the project joins the queue, pledged, drawing no labor.
-    gs.pledge(Upgrade::Watchtower).expect("pledge accepted");
+    // Queue it anyway: the order joins the queue unfunded, drawing no labor.
+    gs.queue_build(Upgrade::Watchtower).expect("queue accepted");
     assert!(gs.fortress.has_project(Upgrade::Watchtower));
-    assert!(gs.fortress.projects[0].pledged);
+    assert!(!gs.fortress.projects[0].funded);
 
-    // A dry day makes no progress on a pledge.
+    // A dry day makes no progress on an unfunded order.
     let owed = gs.fortress.projects[0].worker_days_remaining;
     gs.apply_daily_effects();
-    assert!(gs.fortress.projects[0].pledged, "still unfunded");
-    assert_eq!(gs.fortress.projects[0].worker_days_remaining, owed, "no labor while pledged");
+    assert!(!gs.fortress.projects[0].funded, "still unfunded");
+    assert_eq!(gs.fortress.projects[0].worker_days_remaining, owed, "no labor while unfunded");
 
-    // Deliver the materials; next tick funds the pledge and labor begins.
+    // Deliver the materials; next tick funds the front and labor begins.
     gs.resources.apply_delta(&Upgrade::Watchtower.build_cost(1));
     gs.resources.food = 50;
     gs.apply_daily_effects();
     assert!(!gs.fortress.projects.is_empty(), "still building");
-    assert!(!gs.fortress.projects[0].pledged, "pledge funded");
+    assert!(gs.fortress.projects[0].funded, "front order funded");
     assert!(gs.fortress.projects[0].worker_days_remaining < owed, "labor now flowing");
+}
+
+#[test]
+fn the_build_queue_funds_strictly_front_to_back() {
+    let mut gs = test_state();
+    // Just enough for the cheaper second order, not the pricey first one.
+    gs.resources = Resources::default();
+    gs.resources.food = 50;
+    gs.resources.apply_delta(&Upgrade::Granary.build_cost(1));
+
+    // Front: an order we can't yet afford. Behind it: one we can.
+    gs.queue_build(Upgrade::Watchtower).expect("queued");
+    gs.queue_build(Upgrade::Granary).expect("queued");
+    assert!(!gs.resources.can_afford(&Upgrade::Watchtower.build_cost(1)), "front unaffordable");
+    assert!(gs.resources.can_afford(&Upgrade::Granary.build_cost(1)), "back affordable");
+
+    // A tick funds nothing — the affordable order behind never jumps the line.
+    gs.apply_daily_effects();
+    assert!(!gs.fortress.projects[0].funded, "front still waiting");
+    assert!(!gs.fortress.projects[1].funded, "back can't jump ahead");
+}
+
+#[test]
+fn reorder_and_cancel_manage_the_build_queue() {
+    let mut gs = test_state();
+    gs.queue_build(Upgrade::Granary).expect("queued");
+    gs.queue_build(Upgrade::Watchtower).expect("queued");
+
+    // Promote the second order to the front.
+    assert!(gs.fortress.move_project(1, true));
+    assert_eq!(gs.fortress.projects[0].upgrade, Upgrade::Watchtower);
+    assert!(!gs.fortress.move_project(0, true), "can't move past the front");
+
+    // Cancel the (unfunded) front: no refund, the other order remains.
+    let before = gs.resources.clone();
+    gs.cancel_build(0).expect("cancelled");
+    assert_eq!(gs.fortress.projects.len(), 1);
+    assert_eq!(gs.fortress.projects[0].upgrade, Upgrade::Granary);
+    assert_eq!(gs.resources, before, "an unfunded order refunds nothing");
+}
+
+#[test]
+fn cancelling_a_funded_order_refunds_its_materials() {
+    let mut gs = test_state();
+    gs.resources.apply_delta(&ResourceDelta { wood: 99, stone: 99, ..Default::default() });
+    // Queued into an empty queue and affordable, the order funds at once.
+    gs.queue_build(Upgrade::Granary).expect("queued");
+    assert!(gs.fortress.projects[0].funded, "front funded");
+
+    let after_funding = gs.resources.clone();
+    gs.cancel_build(0).expect("cancelled");
+    assert!(gs.fortress.projects.is_empty());
+    let refunded = gs.resources.wood - after_funding.wood + (gs.resources.stone - after_funding.stone);
+    assert!(refunded > 0, "a funded order hands its materials back");
 }
 
 #[test]
@@ -692,15 +804,17 @@ fn veteran_guard_mitigates_combat() {
 // ----------------------------------------------------------------------
 
 #[test]
-fn construct_pays_materials_and_builds() {
+fn a_front_order_funds_at_once_when_affordable_then_builds() {
     let mut gs = test_state();
     gs.resources.apply_delta(&ResourceDelta { wood: 20, stone: 20, ..Default::default() });
     let wood_before = gs.resources.wood;
     let stone_before = gs.resources.stone;
     assert_eq!(gs.build_availability(Upgrade::Watchtower), BuildAvailability::Ok);
-    // breaking ground pays the materials up front but only enqueues the labor
-    gs.construct(Upgrade::Watchtower).expect("buildable");
+    // queued into an empty queue and affordable: it breaks ground at once, the
+    // materials drawn now, but only the labor is enqueued
+    gs.queue_build(Upgrade::Watchtower).expect("buildable");
     let cost = Upgrade::Watchtower.build_cost(1);
+    assert!(gs.fortress.projects[0].funded, "front order funds immediately");
     assert_eq!(gs.resources.wood, wood_before - cost.wood);
     assert_eq!(gs.resources.stone, stone_before - cost.stone);
     assert!(!gs.fortress.has_upgrade(Upgrade::Watchtower), "not raised until the labor is done");
@@ -711,32 +825,36 @@ fn construct_pays_materials_and_builds() {
     assert_eq!(gs.fortress.building_level(Upgrade::Watchtower), 1);
     // building it again tiers it up rather than duplicating
     gs.resources.apply_delta(&ResourceDelta { wood: 99, stone: 99, ..Default::default() });
-    gs.construct(Upgrade::Watchtower).expect("upgradeable to II");
+    gs.queue_build(Upgrade::Watchtower).expect("upgradeable to II");
     finish_projects(&mut gs);
     assert_eq!(gs.fortress.building_level(Upgrade::Watchtower), 2);
     assert_eq!(gs.fortress.buildings.len(), 1);
 }
 
 #[test]
-fn construct_requires_the_specialist() {
+fn queue_build_requires_the_specialist() {
     let mut gs = test_state();
     gs.resources.apply_delta(&ResourceDelta { wood: 99, stone: 99, ..Default::default() });
-    // no blacksmith lives here yet
+    // no blacksmith lives here yet — a missing specialist blocks queuing
     assert_eq!(
         gs.build_availability(Upgrade::Blacksmith),
         BuildAvailability::MissingRole(Role::Blacksmith)
     );
-    assert!(gs.construct(Upgrade::Blacksmith).is_err());
+    assert!(gs.queue_build(Upgrade::Blacksmith).is_err());
     gs.inhabitants.add(Inhabitant::new("Smith", Role::Blacksmith));
     assert_eq!(gs.build_availability(Upgrade::Blacksmith), BuildAvailability::Ok);
-    gs.construct(Upgrade::Blacksmith).expect("buildable with a smith");
+    gs.queue_build(Upgrade::Blacksmith).expect("queueable with a smith");
 }
 
 #[test]
-fn construct_blocked_without_materials() {
+fn an_unaffordable_build_can_still_be_queued() {
     let mut gs = test_state(); // 50 food, 50 valuables, no wood/stone
     assert_eq!(gs.build_availability(Upgrade::Watchtower), BuildAvailability::CantAfford);
-    assert!(gs.construct(Upgrade::Watchtower).is_err());
+    // queuing accepts it even though the hold can't pay yet
+    gs.queue_build(Upgrade::Watchtower).expect("queueable on credit");
+    assert!(gs.fortress.has_project(Upgrade::Watchtower));
+    assert!(!gs.fortress.projects[0].funded, "waits on materials");
+    // and it isn't raised, nor paid for, until the materials arrive
     assert!(!gs.fortress.has_upgrade(Upgrade::Watchtower));
 }
 
@@ -746,7 +864,8 @@ fn a_build_consumes_worker_days_before_finishing() {
     gs.resources.apply_delta(&ResourceDelta { wood: 30, stone: 30, ..Default::default() });
     // a lone hold with no laborers musters a workforce of 1 a day
     assert_eq!(gs.build_workforce(), 1);
-    gs.construct(Upgrade::Watchtower).expect("buildable"); // 4 worker-days
+    gs.queue_build(Upgrade::Watchtower).expect("buildable"); // 4 worker-days
+    gs.fortress.projects[0].funded = true; // assume the materials are in hand
     // one day's labor is not enough
     let done = gs.fortress.advance_projects(gs.build_workforce());
     assert!(done.is_empty());

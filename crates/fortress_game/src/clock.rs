@@ -107,7 +107,7 @@ fn run_day(
                 // Under auto-mode the hold builds itself, raising what it needs.
                 if auto.0 {
                     if let Some(upgrade) = game.0.auto_build_pick() {
-                        if let Ok(line) = game.0.construct(upgrade) {
+                        if let Ok(line) = game.0.queue_build(upgrade) {
                             log.push(format!("Day {day}: {line} (auto)"));
                         }
                     }
